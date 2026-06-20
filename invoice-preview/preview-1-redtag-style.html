@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TAX INVOICE — INV-000091 (preview)</title>
+  <link rel="stylesheet" href="invoice-template.css" />
+</head>
+<body>
+  <div id="root"></div>
+  <script src="invoice-template.js"></script>
+  <script>
+    /* NEW DATA — multi-line style (originally REDTAG / INV-000068). */
+    var data = {
+      invoiceNo: "INV-000091",
+      currency: "SAR",
+      supplierName: "Layla Maqbula Musa Hakami General Contracting Establishment",
+      supplierLines: [
+        "’Asir",
+        "Saudi Arabia",
+        "TRN5855372075 312093484700003"
+      ],
+      billToLabel: "BillTo",
+      customerName: "AL MAJED OUD TRADING COMPANY LTD",
+      customerLines: [
+        "3rd FLOOR KING FAHD ROAD, AL OLAYA, RIYADH,",
+        "KINGDOM OF SAUDI ARABIA",
+        "Riyadh",
+        "Ar Riyadh",
+        "Saudi Arabia"
+      ],
+      invoiceDate: "15 Jun 2026",
+      terms: "Due on Receipt",
+      dueDate: "15 Jun 2026",
+      poNumber: "105500321",
+      customerVat: "311223344500003",
+      subject: "AL MAJED OUD — RIYADH",
+      vatRate: 15,
+      lineItems: [
+        { description: "Showroom main glass door hinges replaced and full door alignment with cleaning and oiling", qty: 4, rate: 120, taxable: 480, taxRate: 15, tax: 72, amount: 480 },
+        { description: "False ceiling gypsum board repair after water leakage, putty and repaint finishing", qty: 1, rate: 650, taxable: 650, taxRate: 15, tax: 97.5, amount: 650 },
+        { description: "Electrical distribution panel breaker replacement and main supply load testing", qty: 1, rate: 380, taxable: 380, taxRate: 15, tax: 57, amount: 380 },
+        { description: "Floor tile removal and re-installation near shop entrance (Rate includes labour charge)", qty: 18, rate: 45, taxable: 810, taxRate: 15, tax: 121.5, amount: 810 },
+        { description: "Storefront LED signage repair and power supply unit replacement", qty: 1, rate: 540, taxable: 540, taxRate: 15, tax: 81, amount: 540 }
+      ],
+      subTotal: 2860,
+      vatAmount: 429,
+      total: 3289,
+      showTotalTaxableAmount: false
+    };
+    document.getElementById("root").innerHTML = InvoiceTemplate.render(data);
+  </script>
+</body>
+</html>

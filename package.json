@@ -1,0 +1,76 @@
+{
+  "name": "3star-business-suite",
+  "version": "0.1.0",
+  "private": true,
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "typecheck": "tsc --noEmit",
+    "data:import": "node scripts/import-workbook.cjs",
+    "desktop:dev": "concurrently -k \"next dev\" \"wait-on http://localhost:3000 && electron .\"",
+    "desktop:build": "npm run build && electron-builder",
+    "desktop:pack": "npm run build && electron-builder --dir"
+  },
+  "dependencies": {
+    "@types/qrcode": "^1.5.6",
+    "exceljs": "^4.4.0",
+    "firebase": "^12.15.0",
+    "lucide-react": "^1.21.0",
+    "next": "16.2.9",
+    "pdfjs-dist": "^6.0.227",
+    "qrcode": "^1.5.4",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "concurrently": "^10.0.3",
+    "electron": "^42.4.1",
+    "electron-builder": "^26.15.3",
+    "eslint": "^9",
+    "eslint-config-next": "16.2.9",
+    "tailwindcss": "^4",
+    "typescript": "^5",
+    "wait-on": "^9.0.10"
+  },
+  "build": {
+    "appId": "com.threestar.businesssuite",
+    "productName": "3Star Business Suite",
+    "asar": true,
+    "directories": {
+      "output": "dist-electron"
+    },
+    "files": [
+      "electron/**/*",
+      "out/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        "nsis",
+        "portable"
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

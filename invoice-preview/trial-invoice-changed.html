@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Changed Data Invoice — INV-000102</title>
+  <link rel="stylesheet" href="invoice-template.css" />
+</head>
+<body>
+  <div id="root"></div>
+  <script src="invoice-template.js"></script>
+  <script>
+    var data = {
+      invoiceNo: "INV-000102",
+      currency: "SAR",
+      balanceDue: 1083.88,
+      supplierName: "Layla Maqbula Musa Hakami General Contracting Establishment",
+      supplierLines: ["'Asir", "Saudi Arabia", "TRN5855372075 312093484700003"],
+      billToLabel: "Bill To",
+      customerName: "ALSHAYA INTERNATIONAL TRADING CO.",
+      customerLines: [
+        "ABHA PARK MALL, KING FAHAD ROAD, ABHA,",
+        "KINGDOM OF SAUDI ARABIA",
+        "Abha", "'Asir", "Saudi Arabia", "TRN 310998877600003"
+      ],
+      invoiceDate: "20 Jun 2026",
+      terms: "Due on Receipt",
+      dueDate: "20 Jun 2026",
+      poNumber: "204009876",
+      customerVat: "310998877600003",
+      subject: "H&M — ABHA PARK",
+      vatRate: 15,
+      lineItems: [{
+        description: "Main entrance automatic sliding door service including sensor calibration, roller adjustment, track cleaning, lubrication, testing and final commissioning",
+        qty: 6.5,
+        rate: 145,
+        taxable: 942.50,
+        taxRate: 15,
+        tax: 141.38,
+        amount: 942.50
+      }],
+      subTotal: 942.50,
+      vatAmount: 141.38,
+      total: 1083.88,
+      showTotalTaxableAmount: true,
+      notes: ["Thanks for your business.", "Sajjad khan", "Ksajjad324@gmail.com", "0508776795"],
+      poweredBy: true
+    };
+    document.getElementById("root").innerHTML = InvoiceTemplate.render(data);
+  </script>
+</body>
+</html>

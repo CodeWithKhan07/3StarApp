@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TAX INVOICE — INV-000088 (preview)</title>
+  <link rel="stylesheet" href="invoice-template.css" />
+</head>
+<body>
+  <div id="root"></div>
+  <script src="invoice-template.js"></script>
+  <script>
+    /* NEW DATA — single-line style with Balance Due + Notes + footer
+       (originally TWENTY4 Najran / INV-000075). */
+    var data = {
+      invoiceNo: "INV-000088",
+      currency: "SAR",
+      balanceDue: 1147.13,
+      supplierName: "Layla Maqbula Musa Hakami General Contracting Establishment",
+      supplierLines: [
+        "’Asir",
+        "Saudi Arabia",
+        "TRN5855372075 312093484700003"
+      ],
+      billToLabel: "Bill To",
+      customerName: "GULF UNITED RETAILING COMPANY LTD",
+      customerLines: [
+        "2nd FLOOR TAHLIA STREET, AL ANDALUS, JEDDAH,",
+        "KINGDOM OF SAUDI ARABIA",
+        "Jeddah",
+        "Makkah",
+        "Saudi Arabia",
+        "TRN 312009988700003"
+      ],
+      invoiceDate: "12 Jun 2026",
+      terms: "Due on Receipt",
+      dueDate: "12 Jun 2026",
+      poNumber: "204550987",
+      customerVat: "312009988700003",
+      subject: "GULF UNITED — JEDDAH",
+      vatRate: 15,
+      lineItems: [
+        { description: "Shop rear storage room wall partition installation, cement board fixing with stud and tube with welding, putty and paint finishing", qty: 9.5, rate: 105, taxable: 997.5, taxRate: 15, tax: 149.63, amount: 997.5 }
+      ],
+      subTotal: 997.5,
+      vatAmount: 149.63,
+      total: 1147.13,
+      showTotalTaxableAmount: true,
+      notes: [
+        "Thanks for your business.",
+        "Sajjad khan",
+        "Ksajjad324@gmail.com",
+        "0508776795"
+      ],
+      poweredBy: true
+    };
+    document.getElementById("root").innerHTML = InvoiceTemplate.render(data);
+  </script>
+</body>
+</html>

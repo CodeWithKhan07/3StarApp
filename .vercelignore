@@ -1,0 +1,10 @@
+.agents
+.codex
+.git
+.next
+.stitch-reference
+dist-electron
+electron
+node_modules
+npm-debug.log*
+scripts

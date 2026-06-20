@@ -1,0 +1,153 @@
+:root {
+  --ink: #1f1f1f;
+  --muted: #7a7a7a;
+  --line: #e6e6e6;
+  --head: #2b2f33;
+  --head-num: #1f2226;
+  --grand-bg: #efeff1;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: #f1f1f3;
+  color: var(--ink);
+  font-family: Arial, "Helvetica Neue", Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.page {
+  width: 794px;            /* A4 width @ 96dpi */
+  min-height: 1123px;      /* A4 height */
+  margin: 24px auto;
+  background: #fff;
+  padding: 48px 46px 40px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+  position: relative;
+}
+
+/* ---- Top header ---- */
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.logo img { display: block; width: 58px; height: 50px; object-fit: contain; object-position: left top; }
+.title-block { text-align: right; }
+.title {
+  font-size: 38px;
+  font-weight: 300;
+  letter-spacing: 0.5px;
+  color: #161616;
+  line-height: 1;
+}
+.doc-no { font-size: 11px; color: var(--muted); margin-top: 12px; }
+.doc-no--bold { font-weight: 700; color: var(--ink); font-size: 11px; }
+.balance-label { font-size: 11px; font-weight: 700; margin-top: 12px; }
+.balance-amount { font-size: 18px; font-weight: 700; margin-top: 2px; }
+
+/* ---- Supplier block ---- */
+.supplier { margin-top: 14px; font-size: 11px; color: var(--muted); line-height: 1.5; }
+.supplier-name { font-size: 13px; font-weight: 700; color: var(--ink); max-width: 360px; }
+
+/* ---- Parties (bill to + meta) ---- */
+.parties {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 40px;
+  gap: 24px;
+}
+.bill-to { font-size: 11px; color: var(--muted); line-height: 1.5; max-width: 360px; }
+.bill-label { margin-bottom: 6px; font-size: 12px; color: #555; }
+.cust-name { font-size: 12px; font-weight: 700; color: var(--ink); }
+.meta { min-width: 300px; }
+.meta-row { display: flex; justify-content: flex-end; gap: 24px; font-size: 11px; padding: 3px 0; }
+.meta-label { color: var(--muted); }
+.meta-value { color: var(--ink); min-width: 150px; text-align: right; }
+
+/* ---- Subject ---- */
+.subject { margin-top: 34px; font-size: 11px; }
+.subject-label { color: #555; }
+.subject-value { margin-top: 8px; color: var(--ink); }
+
+/* ---- Items table ---- */
+.items {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 16px;
+  font-size: 11px;
+}
+.items thead th {
+  background: var(--head);
+  color: #fff;
+  font-weight: 400;
+  padding: 9px 8px;
+  text-align: left;
+  vertical-align: middle;
+}
+.items thead th.c-num {
+  background: var(--head-num);
+  text-align: center;
+  width: 30px;
+}
+.items thead th.c-r { text-align: right; }
+.items tbody td {
+  padding: 12px 8px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  color: var(--ink);
+}
+.items tbody td.c-num { text-align: center; color: var(--muted); }
+.items tbody td.c-desc { max-width: 230px; color: #3a3a3a; line-height: 1.45; }
+.items tbody td.c-r { text-align: right; white-space: nowrap; }
+.items .c-r { width: 72px; }
+.items .c-num { width: 30px; }
+
+/* ---- Footer (qr + totals) ---- */
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-top: 18px;
+  gap: 30px;
+}
+.qr-area { display: flex; align-items: flex-start; gap: 16px; padding-top: 6px; }
+.qr svg { display: block; width: 110px; height: 110px; }
+.qr-caption { font-size: 10px; color: var(--muted); max-width: 220px; padding-top: 8px; line-height: 1.4; }
+.totals { min-width: 300px; }
+.tot-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  padding: 8px 14px;
+}
+.tot-row span:first-child { color: #444; }
+.tot-row span:last-child { color: var(--ink); }
+.tot-row--grand {
+  background: var(--grand-bg);
+  margin-top: 10px;
+  padding: 16px 14px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+/* ---- Notes / powered by ---- */
+.notes { margin-top: 40px; font-size: 11px; color: var(--muted); line-height: 1.5; }
+.notes-title { color: #555; font-size: 13px; margin-bottom: 4px; }
+.powered {
+  position: absolute;
+  left: 46px;
+  bottom: 24px;
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.5px;
+}
+.powered strong { color: #b8860b; }
+
+@media print {
+  html, body { background: #fff; }
+  .page { margin: 0; box-shadow: none; width: 100%; min-height: auto; padding: 32px; }
+  @page { size: A4; margin: 8mm; }
+}

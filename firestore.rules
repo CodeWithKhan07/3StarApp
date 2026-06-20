@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null
+        && request.auth.token.email == 'ksajjad324@gmail.com';
+    }
+    function ownsExisting() { return signedIn() && resource.data.ownerId == request.auth.uid; }
+    function ownsIncoming() { return signedIn() && request.resource.data.ownerId == request.auth.uid; }
+
+    match /workspaces/{workspaceId} {
+      allow create: if ownsIncoming();
+      allow read, update, delete: if ownsExisting();
+    }
+
+    match /businessData/{userId}/{document=**} {
+      allow read, write: if signedIn() && userId == request.auth.uid;
+    }
+
+    match /{collectionName}/{documentId} {
+      allow create: if collectionName in ['clients', 'projects', 'quotations', 'invoices', 'payments'] && ownsIncoming();
+      allow read, update, delete: if collectionName in ['clients', 'projects', 'quotations', 'invoices', 'payments'] && ownsExisting();
+    }
+  }
+}
