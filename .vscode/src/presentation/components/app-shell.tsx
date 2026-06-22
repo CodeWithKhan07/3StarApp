@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 const navGroups = [
   {
@@ -71,7 +71,6 @@ const mobileBottomItems = [
   ["Import", routes.excelExport, Upload],
 ] as const;
 
-
 type SearchResult = {
   id: string;
   title: string;
@@ -95,7 +94,7 @@ function readNumber(value: unknown, fallback = 0) {
 function readFirstString(
   record: Record<string, unknown>,
   keys: string[],
-  fallback = ""
+  fallback = "",
 ) {
   for (const key of keys) {
     const value = record[key];
@@ -112,9 +111,11 @@ function isActiveRoute(pathname: string, href: string) {
   if (pathname === href) return true;
   if (href === routes.projects && pathname.startsWith("/projects")) return true;
   if (href === routes.clients && pathname.startsWith("/clients")) return true;
-  if (href === routes.quotations && pathname.startsWith("/quotations")) return true;
+  if (href === routes.quotations && pathname.startsWith("/quotations"))
+    return true;
   if (href === routes.invoices && pathname.startsWith("/invoices")) return true;
-  if (href === routes.excelExport && pathname.startsWith("/excel-export")) return true;
+  if (href === routes.excelExport && pathname.startsWith("/excel-export"))
+    return true;
   return false;
 }
 
@@ -130,10 +131,52 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
+  const [scrollSidebarHidden, setScrollSidebarHidden] = useState(false);
+  const [sidebarMode, setSidebarMode] = useState<"auto" | "hidden" | "shown">(
+    "auto",
+  );
+  const [sidebarHoverOpen, setSidebarHoverOpen] = useState(false);
+  const scrollHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const isDataEntryRoute =
+    pathname.includes("/new") ||
+    pathname.includes("/edit") ||
+    pathname.includes("/quotations/invoice");
+
+  const autoHideDesktopSidebar = isDataEntryRoute || scrollSidebarHidden;
+  const baseDesktopSidebarHidden =
+    isDesktop &&
+    (sidebarMode === "hidden" ||
+      (sidebarMode === "auto" && autoHideDesktopSidebar));
+  useEffect(() => {
+    function updateViewportMode() {
+      const nextIsDesktop = window.innerWidth >= 1101;
+      setIsDesktop(nextIsDesktop);
+
+      if (nextIsDesktop) {
+        setMobileOpen(false);
+      } else {
+        setScrollSidebarHidden(false);
+        setSidebarHoverOpen(false);
+        setSidebarMode("auto");
+      }
+    }
+
+    updateViewportMode();
+    window.addEventListener("resize", updateViewportMode);
+
+    return () => {
+      window.removeEventListener("resize", updateViewportMode);
+    };
+  }, []);
 
   useEffect(() => {
     setMobileOpen(false);
     setSearchOpen(false);
+    setScrollSidebarHidden(false);
+    setSidebarHoverOpen(false);
+    setSidebarMode("auto");
   }, [pathname]);
 
   useEffect(() => {
@@ -143,6 +186,66 @@ export function AppShell({ children }: { children: ReactNode }) {
       document.body.style.overflow = "";
     };
   }, [mobileOpen]);
+
+  useEffect(() => {
+    if (sidebarMode !== "auto") {
+      return;
+    }
+
+    if (isDataEntryRoute) {
+      setScrollSidebarHidden(true);
+      return;
+    }
+
+    function handlePageScroll() {
+      if (window.innerWidth < 1101) {
+        setScrollSidebarHidden(false);
+        return;
+      }
+
+      const currentScroll =
+        window.scrollY ||
+        document.documentElement.scrollTop ||
+        document.body.scrollTop ||
+        0;
+
+      setScrollSidebarHidden(currentScroll > 36);
+
+      if (scrollHideTimer.current) {
+        clearTimeout(scrollHideTimer.current);
+      }
+
+      scrollHideTimer.current = setTimeout(() => {
+        const nextScroll =
+          window.scrollY ||
+          document.documentElement.scrollTop ||
+          document.body.scrollTop ||
+          0;
+
+        if (nextScroll <= 36) {
+          setScrollSidebarHidden(false);
+        }
+      }, 250);
+    }
+
+    window.addEventListener("scroll", handlePageScroll, { passive: true });
+    document.addEventListener("scroll", handlePageScroll, {
+      passive: true,
+      capture: true,
+    });
+    handlePageScroll();
+
+    return () => {
+      window.removeEventListener("scroll", handlePageScroll);
+      document.removeEventListener("scroll", handlePageScroll, {
+        capture: true,
+      });
+
+      if (scrollHideTimer.current) {
+        clearTimeout(scrollHideTimer.current);
+      }
+    };
+  }, [isDataEntryRoute, sidebarMode]);
 
   const searchResults = useMemo<SearchResult[]>(() => {
     const query = search.trim().toLowerCase();
@@ -157,13 +260,13 @@ export function AppShell({ children }: { children: ReactNode }) {
         const title = readFirstString(
           record,
           ["companyName", "company", "name", "clientName", "customerName"],
-          "Unnamed Client"
+          "Unnamed Client",
         );
         const city = readFirstString(record, ["city", "location"], "No city");
         const contact = readFirstString(
           record,
           ["contactPerson", "contact", "phone", "mobile"],
-          "No contact"
+          "No contact",
         );
 
         return {
@@ -175,7 +278,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         };
       })
       .filter((item) => {
-        const target = `${item.id} ${item.title} ${item.subtitle}`.toLowerCase();
+        const target =
+          `${item.id} ${item.title} ${item.subtitle}`.toLowerCase();
         return target.includes(query);
       })
       .slice(0, 4);
@@ -184,21 +288,25 @@ export function AppShell({ children }: { children: ReactNode }) {
       .map((project) => {
         const record = asRecord(project);
 
-        const id = readFirstString(record, ["id", "projectId"], crypto.randomUUID());
+        const id = readFirstString(
+          record,
+          ["id", "projectId"],
+          crypto.randomUUID(),
+        );
         const title = readFirstString(
           record,
           ["companyName", "company", "clientName", "customerName"],
-          "Unnamed Project"
+          "Unnamed Project",
         );
         const location = readFirstString(
           record,
           ["location", "site", "storeBranch", "branch"],
-          "No location"
+          "No location",
         );
         const work = readFirstString(
           record,
           ["description", "workDescription", "scope", "category"],
-          "No description"
+          "No description",
         );
 
         return {
@@ -210,7 +318,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         };
       })
       .filter((item) => {
-        const target = `${item.id} ${item.title} ${item.subtitle}`.toLowerCase();
+        const target =
+          `${item.id} ${item.title} ${item.subtitle}`.toLowerCase();
         return target.includes(query);
       })
       .slice(0, 4);
@@ -219,13 +328,21 @@ export function AppShell({ children }: { children: ReactNode }) {
       .map((invoice) => {
         const record = asRecord(invoice);
 
-        const id = readFirstString(record, ["id", "invoiceNo"], crypto.randomUUID());
+        const id = readFirstString(
+          record,
+          ["id", "invoiceNo"],
+          crypto.randomUUID(),
+        );
         const title = readFirstString(
           record,
           ["companyName", "company", "clientName", "customerName"],
-          "Unnamed Invoice"
+          "Unnamed Invoice",
         );
-        const status = readFirstString(record, ["status", "paymentStatus"], "unknown");
+        const status = readFirstString(
+          record,
+          ["status", "paymentStatus"],
+          "unknown",
+        );
         const amount = readNumber(record.amount ?? record.invoiceAmount, 0);
 
         return {
@@ -237,7 +354,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         };
       })
       .filter((item) => {
-        const target = `${item.id} ${item.title} ${item.subtitle}`.toLowerCase();
+        const target =
+          `${item.id} ${item.title} ${item.subtitle}`.toLowerCase();
         return target.includes(query);
       })
       .slice(0, 4);
@@ -269,8 +387,25 @@ export function AppShell({ children }: { children: ReactNode }) {
     router.push(href);
   }
 
+  function toggleDesktopSidebar() {
+    setSidebarHoverOpen(false);
+    setSidebarMode(baseDesktopSidebarHidden ? "shown" : "hidden");
+  }
+
+  function showSidebarFromHover() {
+    if (!isDesktop || !baseDesktopSidebarHidden) return;
+    setSidebarHoverOpen(true);
+  }
+
+  function hideSidebarFromHover() {
+    if (!isDesktop || !baseDesktopSidebarHidden) return;
+    setSidebarHoverOpen(false);
+  }
+
   return (
-    <div className="app-frame">
+    <div
+      className={`app-frame ${baseDesktopSidebarHidden ? "app-frame--sidebar-hidden" : ""} ${sidebarHoverOpen ? "app-frame--sidebar-hover-open" : ""}`}
+    >
       <button
         className={`sidebar-backdrop ${mobileOpen ? "is-open" : ""}`}
         aria-label="Close navigation"
@@ -278,7 +413,23 @@ export function AppShell({ children }: { children: ReactNode }) {
         type="button"
       />
 
-      <aside className={`sidebar ${mobileOpen ? "sidebar--open" : ""}`}>
+      {isDesktop && baseDesktopSidebarHidden ? (
+        <button
+          className="sidebar-hover-zone"
+          aria-label="Show sidebar on hover"
+          title="Hover to open sidebar"
+          type="button"
+          onMouseEnter={showSidebarFromHover}
+          onFocus={showSidebarFromHover}
+          onClick={() => setSidebarMode("shown")}
+        />
+      ) : null}
+
+      <aside
+        className={`sidebar ${mobileOpen ? "sidebar--open" : ""}`}
+        onMouseEnter={showSidebarFromHover}
+        onMouseLeave={hideSidebarFromHover}
+      >
         <div className="sidebar__brand">
           <BrandMark inverse />
 
@@ -362,6 +513,19 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="app-main">
+        <button
+          className={`sidebar-floating-toggle ${baseDesktopSidebarHidden ? "is-collapsed" : ""}`}
+          type="button"
+          onClick={toggleDesktopSidebar}
+          aria-label={
+            baseDesktopSidebarHidden ? "Show sidebar" : "Hide sidebar"
+          }
+          title={baseDesktopSidebarHidden ? "Show sidebar" : "Hide sidebar"}
+        >
+          <Menu />
+          <span>{baseDesktopSidebarHidden ? "Show menu" : "Focus mode"}</span>
+        </button>
+
         <header className="topbar">
           <div className="topbar__left">
             <button
@@ -413,7 +577,10 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <div className="topbar__actions">
-            <Link className="button button--primary topbar__import" href={routes.excelExport}>
+            <Link
+              className="button button--primary topbar__import"
+              href={routes.excelExport}
+            >
               <Upload size={14} />
               Import
             </Link>
@@ -425,8 +592,16 @@ export function AppShell({ children }: { children: ReactNode }) {
 
             <button
               className="theme-toggle"
-              aria-label={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
-              title={theme === "dark" ? "Switch to light theme" : "Switch to dark theme"}
+              aria-label={
+                theme === "dark"
+                  ? "Switch to light theme"
+                  : "Switch to dark theme"
+              }
+              title={
+                theme === "dark"
+                  ? "Switch to light theme"
+                  : "Switch to dark theme"
+              }
               onClick={toggleTheme}
               type="button"
             >
@@ -465,7 +640,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             const isActive = isActiveRoute(pathname, href);
 
             return (
-              <Link key={href} href={href} className={isActive ? "is-active" : ""}>
+              <Link
+                key={href}
+                href={href}
+                className={isActive ? "is-active" : ""}
+              >
                 <Icon size={18} />
                 <span>{label}</span>
               </Link>

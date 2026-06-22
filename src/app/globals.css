@@ -6428,3 +6428,27 @@ body {
     display: none !important;
   }
 }
+
+/* ========================================================================== */
+/* Final fix: single menu control per viewport                                */
+/* Desktop uses the floating sidebar button only. Mobile uses the topbar menu. */
+/* ========================================================================== */
+
+@media (min-width: 1101px) {
+  .topbar .mobile-menu,
+  .sidebar-focus-toggle {
+    display: none !important;
+  }
+}
+
+@media (max-width: 1100px) {
+  .sidebar-floating-toggle,
+  .sidebar-hover-zone,
+  .sidebar-focus-toggle {
+    display: none !important;
+  }
+
+  .topbar .mobile-menu {
+    display: inline-flex !important;
+  }
+}

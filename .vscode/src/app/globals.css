@@ -5500,3 +5500,955 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* ========================================================================== */
+/* Workspace focus mode + safer mobile data cards                             */
+/* Added without changing the existing dark/light theme variable system.       */
+/* ========================================================================== */
+
+.app-frame--sidebar-hidden .sidebar {
+  width: 0 !important;
+  min-width: 0 !important;
+  padding-inline: 0 !important;
+  border: 0 !important;
+  overflow: hidden !important;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-100%) !important;
+  transition:
+    width 180ms ease,
+    min-width 180ms ease,
+    padding 180ms ease,
+    opacity 140ms ease,
+    transform 180ms ease;
+}
+
+.app-frame--sidebar-hidden .mobile-menu {
+  display: inline-flex !important;
+}
+
+.app-frame--sidebar-hidden .app-content {
+  max-width: none;
+}
+
+.app-frame--sidebar-hidden .topbar__left {
+  min-width: auto;
+}
+
+.app-frame--sidebar-hidden .topbar__search-wrap {
+  max-width: 760px;
+}
+
+/* Full-width editing workspace: new/edit/invoice screens should not feel boxed. */
+.app-frame--sidebar-hidden .record-form,
+.app-frame--sidebar-hidden .form-card,
+.app-frame--sidebar-hidden .invoice-workspace,
+.app-frame--sidebar-hidden .quotation-invoice-workspace {
+  width: 100%;
+  max-width: none;
+}
+
+/* Never show mobile record cards on desktop unless explicitly inside mobile media. */
+.mobile-card-list,
+.mobile-company-list,
+.mobile-record-card,
+.mobile-company-card {
+  min-width: 0;
+}
+
+@media (min-width: 761px) {
+  .mobile-card-list,
+  .mobile-company-list {
+    display: none !important;
+  }
+
+  .desktop-data-table {
+    display: block !important;
+  }
+}
+
+@media (max-width: 760px) {
+  html,
+  body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .app-frame,
+  .app-main,
+  .app-content {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .app-content {
+    padding-inline: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
+  }
+
+  .page-header,
+  .card,
+  .form-card,
+  .projects-table-card,
+  .mobile-company-card,
+  .mobile-record-card,
+  .invoice-line-card,
+  .invoice-choice-card {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .desktop-data-table {
+    display: none !important;
+  }
+
+  .mobile-card-list,
+  .mobile-company-list {
+    width: 100%;
+    max-width: 100%;
+    display: grid !important;
+    gap: 14px;
+  }
+
+  .mobile-company-card {
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: 18px;
+    background: var(--surface-card);
+    box-shadow: var(--shadow-soft);
+  }
+
+  .mobile-company-card > header {
+    display: grid;
+    gap: 5px;
+    padding: 15px;
+    border-bottom: 1px solid var(--border);
+    background:
+      linear-gradient(125deg, rgb(16 185 129 / 0.10), transparent 58%),
+      var(--surface-subtle);
+  }
+
+  .mobile-company-card > header span {
+    color: var(--emerald-dark);
+    font-size: 11px;
+    font-weight: 950;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  .mobile-company-card > header h3 {
+    color: var(--text-primary);
+    font-size: 18px;
+    line-height: 1.2;
+    font-weight: 950;
+    letter-spacing: -0.025em;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-company-card > header small {
+    color: var(--muted);
+    font-size: 12.5px;
+    font-weight: 750;
+    line-height: 1.45;
+  }
+
+  .mobile-company-card__records {
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .mobile-record-card {
+    display: grid;
+    gap: 12px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--surface-card);
+    padding: 13px;
+  }
+
+  .mobile-record-card > header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  .mobile-record-card > header > div {
+    min-width: 0;
+  }
+
+  .mobile-record-card > header span,
+  .mobile-card-status > span,
+  .mobile-record-card dt {
+    color: var(--muted);
+    font-size: 10.5px;
+    font-weight: 950;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .mobile-record-card > header strong {
+    display: block;
+    margin-top: 3px;
+    color: var(--text-primary);
+    font-size: 16px;
+    font-weight: 950;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-record-card > header small {
+    display: block;
+    margin-top: 3px;
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+
+  .mobile-record-card dl {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+    margin: 0;
+  }
+
+  .mobile-record-card dl > div {
+    min-width: 0;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    background: var(--surface-subtle);
+    padding: 10px;
+  }
+
+  .mobile-record-card dd {
+    margin: 5px 0 0;
+    color: var(--text-primary);
+    font-size: 13.5px;
+    font-weight: 850;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  .mobile-field-wide {
+    grid-column: 1 / -1;
+  }
+
+  .mobile-card-status {
+    display: grid;
+    gap: 7px;
+  }
+
+  .mobile-status-select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .mobile-record-card footer {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .mobile-record-card footer .button {
+    width: 100%;
+  }
+
+  .invoice-line-card .form-grid,
+  .quotation-line-card .form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .form-actions {
+    max-width: 100%;
+    margin-inline: 0;
+  }
+}
+
+@media (max-width: 430px) {
+  .mobile-record-card dl {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-record-card footer {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ========================================================================== */
+/* Quotation mobile card UX final override                                    */
+/* Keeps desktop tables, uses grouped company cards on phones.                */
+/* ========================================================================== */
+
+.quotations-mobile-company-list {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .projects-table-card .desktop-data-table {
+    display: none !important;
+  }
+
+  .projects-table-card .mobile-company-list,
+  .projects-table-card .mobile-card-list {
+    display: grid !important;
+  }
+
+  .projects-table-card {
+    padding: 0 !important;
+    overflow: hidden;
+  }
+
+  .projects-table-header {
+    padding: 16px !important;
+  }
+
+  .mobile-company-card {
+    margin: 0;
+    width: 100%;
+  }
+
+  .mobile-company-card__records {
+    padding: 12px;
+  }
+
+  .mobile-record-card footer {
+    position: sticky;
+    bottom: 78px;
+    z-index: 4;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--surface-card) 96%, transparent);
+    padding: 8px;
+    box-shadow: var(--shadow-soft);
+    backdrop-filter: blur(12px);
+  }
+
+  .mobile-record-card footer .button {
+    min-height: 42px;
+    padding-inline: 8px;
+    font-size: 12.5px;
+    white-space: normal;
+    text-align: center;
+  }
+}
+
+@media (min-width: 761px) {
+  .projects-table-card .desktop-data-table {
+    display: block !important;
+  }
+
+  .projects-table-card .mobile-company-list,
+  .projects-table-card .mobile-card-list {
+    display: none !important;
+  }
+}
+
+/* ========================================================================== */
+/* Final professional workspace/cards + reliable sidebar focus mode           */
+/* Keeps existing dark/light theme variables.                                 */
+/* ========================================================================== */
+
+.sidebar-focus-toggle {
+  display: none;
+  width: 42px;
+  height: 42px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface-card);
+  color: var(--text-primary);
+  transition:
+    background 160ms ease,
+    border-color 160ms ease,
+    transform 160ms ease;
+}
+
+.sidebar-focus-toggle:hover {
+  border-color: var(--emerald);
+  background: var(--emerald-soft);
+  color: var(--emerald-dark);
+}
+
+.sidebar-focus-toggle:active {
+  transform: scale(0.96);
+}
+
+.sidebar-focus-toggle svg {
+  width: 20px;
+  height: 20px;
+}
+
+@media (min-width: 1101px) {
+  .sidebar-focus-toggle {
+    display: inline-flex;
+  }
+
+  .mobile-menu {
+    display: none !important;
+  }
+
+  .app-frame--sidebar-hidden .sidebar {
+    width: 0 !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    opacity: 0;
+    overflow: hidden !important;
+    pointer-events: none;
+    transform: translateX(-100%) !important;
+    box-shadow: none !important;
+  }
+
+  .app-frame--sidebar-hidden .topbar__left {
+    min-width: auto;
+  }
+
+  .app-frame--sidebar-hidden .topbar__search-wrap {
+    max-width: min(860px, 54vw);
+  }
+
+  .app-frame--sidebar-hidden .app-content {
+    width: 100%;
+    max-width: none;
+    padding-inline: clamp(28px, 2.6vw, 56px);
+  }
+}
+
+/* Card-first data UX for web and mobile. Desktop no longer relies on wide tables. */
+.card:has(.mobile-card-list) {
+  padding: clamp(16px, 1.4vw, 24px) !important;
+}
+
+.card:has(.mobile-card-list) .desktop-data-table {
+  display: none !important;
+}
+
+.mobile-card-list,
+.mobile-company-list {
+  display: grid !important;
+  width: 100%;
+  max-width: 100%;
+  gap: clamp(14px, 1.2vw, 22px);
+}
+
+.mobile-card-list:not(.mobile-company-list) {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+}
+
+.mobile-company-list {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr));
+  align-items: start;
+}
+
+.mobile-company-card {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--border) 84%, var(--emerald));
+  border-radius: clamp(18px, 1.4vw, 24px);
+  background: var(--surface-card);
+  box-shadow: var(--shadow-soft);
+}
+
+.mobile-company-card > header {
+  display: grid;
+  gap: 6px;
+  border-bottom: 1px solid var(--border);
+  background:
+    linear-gradient(125deg, rgb(16 185 129 / 0.12), transparent 56%),
+    var(--surface-subtle);
+  padding: clamp(16px, 1.25vw, 22px);
+}
+
+.mobile-company-card > header span {
+  color: var(--emerald-dark);
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.mobile-company-card > header h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: clamp(18px, 1.4vw, 24px);
+  line-height: 1.15;
+  font-weight: 950;
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+}
+
+.mobile-company-card > header small {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.mobile-company-card__records {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr));
+  gap: clamp(12px, 1vw, 16px);
+  padding: clamp(12px, 1vw, 18px);
+}
+
+.mobile-record-card {
+  min-width: 0;
+  display: grid;
+  gap: 13px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-card) 96%, var(--emerald)) 0%, var(--surface-card) 100%);
+  padding: clamp(13px, 1vw, 18px);
+  color: var(--text-primary);
+  box-shadow: 0 8px 24px rgb(15 23 42 / 0.045);
+}
+
+.mobile-record-card > header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mobile-record-card > header > div {
+  min-width: 0;
+}
+
+.mobile-record-card > header span,
+.mobile-card-status > span,
+.mobile-record-card dt {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 950;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.mobile-record-card > header strong {
+  display: block;
+  margin-top: 4px;
+  color: var(--text-primary);
+  font-size: clamp(15.5px, 1.05vw, 19px);
+  font-weight: 950;
+  line-height: 1.22;
+  overflow-wrap: anywhere;
+}
+
+.mobile-record-card > header small {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.mobile-record-card dl {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.mobile-record-card dl > div {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface-subtle);
+  padding: 11px;
+}
+
+.mobile-record-card dd {
+  margin: 5px 0 0;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.mobile-field-wide {
+  grid-column: 1 / -1;
+}
+
+.mobile-card-status {
+  display: grid;
+  gap: 7px;
+}
+
+.mobile-status-select {
+  width: 100%;
+  min-width: 0;
+}
+
+.mobile-record-card footer {
+  position: static !important;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 9px;
+  border: 0 !important;
+  background: transparent !important;
+  padding: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+.mobile-record-card footer .button {
+  width: 100%;
+  min-height: 42px;
+  white-space: normal;
+  text-align: center;
+}
+
+.mobile-empty-state {
+  border: 1px dashed var(--border);
+  border-radius: 18px;
+  background: var(--surface-subtle);
+  padding: 24px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 800;
+  text-align: center;
+}
+
+/* Use more columns when the sidebar is collapsed / focus mode is active. */
+@media (min-width: 1101px) {
+  .app-frame--sidebar-hidden .mobile-company-list {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
+  }
+
+  .app-frame--sidebar-hidden .mobile-company-card__records {
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .mobile-card-list,
+  .mobile-company-list,
+  .mobile-company-card__records,
+  .mobile-record-card dl,
+  .mobile-record-card footer {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-company-card,
+  .mobile-record-card {
+    border-radius: 16px;
+  }
+
+  .mobile-company-card > header,
+  .mobile-company-card__records,
+  .mobile-record-card {
+    padding: 13px;
+  }
+}
+
+/* ========================================================================== */
+/* Quotations: company/customer card-first workspace + dense working filters   */
+/* ========================================================================== */
+
+.quotation-filter-panel {
+  display: grid;
+  grid-template-columns: minmax(320px, 1.7fr) repeat(6, minmax(138px, 0.7fr)) auto;
+  align-items: end;
+  gap: 12px;
+}
+
+.quotation-filter-panel .quotation-search {
+  width: 100%;
+  min-width: 0;
+}
+
+.compact-filter-field {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.compact-filter-field span {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.compact-filter-field input {
+  width: 100%;
+  min-height: var(--control-height, 44px);
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface-card);
+  padding: 9px 12px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 750;
+  outline: 0;
+}
+
+.compact-filter-field input:focus {
+  border-color: var(--emerald);
+  box-shadow: 0 0 0 3px rgb(16 185 129 / 0.12);
+}
+
+.quotation-clear-filters {
+  white-space: nowrap;
+}
+
+.quotations-company-workspace {
+  overflow: visible !important;
+}
+
+.quotations-company-workspace .desktop-data-table {
+  display: none !important;
+}
+
+.quotations-company-workspace .mobile-company-list {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 560px), 1fr));
+  gap: clamp(16px, 1.4vw, 24px);
+  margin-top: 8px;
+}
+
+.quotations-company-workspace .mobile-company-card {
+  border-color: color-mix(in srgb, var(--border) 72%, var(--emerald));
+}
+
+.quotations-company-workspace .mobile-company-card__records {
+  grid-template-columns: 1fr;
+}
+
+.quotations-company-workspace .mobile-record-card {
+  border-radius: 18px;
+}
+
+.quotations-company-workspace .mobile-record-card dl {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.quotations-company-workspace .mobile-record-card .mobile-field-wide {
+  grid-column: span 2;
+}
+
+.quotations-company-workspace .mobile-record-card footer {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.quotations-company-workspace .mobile-record-card footer .button {
+  min-height: 46px;
+  font-weight: 900;
+}
+
+@media (max-width: 1450px) {
+  .quotation-filter-panel {
+    grid-template-columns: minmax(280px, 1.5fr) repeat(3, minmax(140px, 1fr));
+  }
+
+  .quotation-clear-filters {
+    width: 100%;
+  }
+
+  .quotations-company-workspace .mobile-record-card dl {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .quotations-company-workspace .mobile-record-card .mobile-field-wide {
+    grid-column: 1 / -1;
+  }
+
+  .quotations-company-workspace .mobile-record-card footer {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .quotation-filter-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .quotations-company-workspace .mobile-company-list,
+  .quotations-company-workspace .mobile-company-card__records,
+  .quotations-company-workspace .mobile-record-card dl,
+  .quotations-company-workspace .mobile-record-card footer {
+    grid-template-columns: 1fr;
+  }
+}
+
+
+/* ========================================================================== */
+/* Final fix: no duplicate hamburger on mobile                                */
+/* ========================================================================== */
+
+@media (max-width: 1100px) {
+  .sidebar-focus-toggle {
+    display: none !important;
+  }
+
+  .mobile-menu {
+    display: inline-flex !important;
+  }
+}
+
+@media (min-width: 1101px) {
+  .mobile-menu {
+    display: none !important;
+  }
+
+  .sidebar-focus-toggle {
+    display: inline-flex;
+  }
+}
+
+/* ========================================================================== */
+/* Final sidebar hover rail + manual focus toggle                             */
+/* Keeps existing theme variables and mobile drawer behavior.                 */
+/* ========================================================================== */
+
+.sidebar-hover-zone,
+.sidebar-floating-toggle {
+  display: none;
+}
+
+@media (min-width: 1101px) {
+  .sidebar-hover-zone {
+    position: fixed;
+    z-index: 96;
+    top: 0;
+    left: 0;
+    width: 18px;
+    height: 100dvh;
+    display: block;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+
+  .sidebar-hover-zone::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    left: 5px;
+    width: 5px;
+    height: 86px;
+    transform: translateY(-50%);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--emerald) 62%, transparent);
+    box-shadow: 0 0 18px rgb(16 185 129 / 0.34);
+    opacity: 0.82;
+  }
+
+  .app-frame--sidebar-hidden.app-frame--sidebar-hover-open .sidebar {
+    position: fixed !important;
+    z-index: 98 !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: clamp(264px, 18.5vw, 312px) !important;
+    min-width: clamp(264px, 18.5vw, 312px) !important;
+    height: 100dvh !important;
+    padding: 22px 16px 18px !important;
+    opacity: 1 !important;
+    overflow-y: auto !important;
+    pointer-events: auto !important;
+    transform: translateX(0) !important;
+    box-shadow: 22px 0 44px rgb(0 0 0 / 0.28) !important;
+  }
+
+  .app-frame--sidebar-hidden.app-frame--sidebar-hover-open .sidebar::after {
+    content: "";
+    position: fixed;
+    inset: 0 auto 0 100%;
+    width: 16px;
+  }
+
+  .sidebar-floating-toggle {
+    position: fixed;
+    z-index: 95;
+    left: 16px;
+    bottom: 18px;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--surface-card) 94%, transparent);
+    color: var(--text-primary);
+    padding: 0 15px;
+    font-size: 13px;
+    font-weight: 900;
+    box-shadow: var(--shadow-modal);
+    backdrop-filter: blur(16px);
+    transition:
+      left 180ms ease,
+      background 160ms ease,
+      border-color 160ms ease,
+      transform 160ms ease;
+  }
+
+  .sidebar-floating-toggle svg {
+    width: 18px;
+    height: 18px;
+  }
+
+  .sidebar-floating-toggle:hover {
+    border-color: var(--emerald);
+    background: var(--emerald-soft);
+    color: var(--emerald-dark);
+    transform: translateY(-1px);
+  }
+
+  .sidebar-floating-toggle:active {
+    transform: scale(0.97);
+  }
+
+  .sidebar-floating-toggle.is-collapsed {
+    left: 22px;
+  }
+
+  .app-frame:not(.app-frame--sidebar-hidden) .sidebar-floating-toggle {
+    left: calc(clamp(264px, 18.5vw, 312px) + 18px);
+  }
+
+  .sidebar-focus-toggle {
+    display: inline-flex !important;
+  }
+}
+
+@media (max-width: 1100px) {
+  .sidebar-hover-zone,
+  .sidebar-floating-toggle,
+  .sidebar-focus-toggle {
+    display: none !important;
+  }
+}
+
+/* ========================================================================== */
+/* Final fix: single menu control per viewport                                */
+/* Desktop uses the floating sidebar button only. Mobile uses the topbar menu. */
+/* ========================================================================== */
+
+@media (min-width: 1101px) {
+  .topbar .mobile-menu,
+  .sidebar-focus-toggle {
+    display: none !important;
+  }
+}
+
+@media (max-width: 1100px) {
+  .sidebar-floating-toggle,
+  .sidebar-hover-zone,
+  .sidebar-focus-toggle {
+    display: none !important;
+  }
+
+  .topbar .mobile-menu {
+    display: inline-flex !important;
+  }
+}

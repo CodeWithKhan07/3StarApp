@@ -41,35 +41,56 @@ const today = () => new Date().toISOString().slice(0, 10);
 type InvoiceLineItem = NonNullable<Invoice["lineItems"]>[number];
 type Mode = "manual" | "upload";
 
+function safeNumber(value: unknown, fallback = 0) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function safeString(value: unknown, fallback = "") {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
 function createManualLineItems(
   quotation: Quotation,
   vatRate: number,
 ): InvoiceLineItem[] {
   if (quotation.lineItems?.length) {
-    return quotation.lineItems.map((item, index) => ({
-      id: String(index + 1),
-      description: item.description || quotation.scopeOfWork,
-      quantity: item.quantity ?? 0,
-      unitCode: "",
-      unitPrice: item.unitPrice || item.amount || quotation.amount,
-      amount: item.amount || (item.quantity ?? 0) * (item.unitPrice ?? 0),
-      vatRate: item.vatRate ?? vatRate,
-      vatAmount:
-        item.vatAmount ??
-        (item.amount || (item.quantity ?? 0) * (item.unitPrice ?? 0)) *
-          ((item.vatRate ?? vatRate) / 100),
-    }));
+    return quotation.lineItems.map((item, index) => {
+      const itemRecord = item as unknown as Record<string, unknown>;
+      const quantity = safeNumber(item.quantity, 0);
+      const unitPrice = safeNumber(item.unitPrice, 0);
+      const amount = safeNumber(item.amount, quantity * unitPrice);
+      const appliedVatRate = safeNumber(item.vatRate, vatRate);
+      const unitCode = safeString(itemRecord.unitCode, safeString(itemRecord.unit, ""));
+      const vatAmount = safeNumber(
+        itemRecord.vatAmount,
+        amount * (appliedVatRate / 100),
+      );
+
+      return {
+        id: String(index + 1),
+        description: item.description || quotation.scopeOfWork || "",
+        quantity,
+        unitCode,
+        unitPrice,
+        amount,
+        vatRate: appliedVatRate,
+        vatAmount,
+      };
+    });
   }
 
-  const subTotal = quotation.subTotal ?? quotation.amount;
-  const appliedVatRate = quotation.vatRate ?? vatRate;
-  const vatAmount = quotation.vatAmount ?? subTotal * (appliedVatRate / 100);
+  const subTotal = safeNumber(quotation.subTotal, safeNumber(quotation.amount, 0));
+  const appliedVatRate = safeNumber(quotation.vatRate, vatRate);
+  const vatAmount = safeNumber(
+    quotation.vatAmount,
+    subTotal * (appliedVatRate / 100),
+  );
 
   return [
     {
       id: "1",
       description: quotation.scopeOfWork || "",
-      quantity: quotation.amount ? 1 : 0,
+      quantity: subTotal > 0 ? 1 : 0,
       unitCode: "",
       unitPrice: subTotal,
       amount: subTotal,
@@ -84,33 +105,50 @@ function createImportedLineItems(
   fallbackVatRate: number,
 ): InvoiceLineItem[] {
   if (draft.lineItems?.length) {
-    return draft.lineItems.map((item, index) => ({
-      id: item.id || String(index + 1),
-      description: item.description || "",
-      quantity: item.quantity ?? 0,
-      unitCode: item.unitCode || "",
-      unitPrice: item.unitPrice || 0,
-      amount: item.amount || (item.quantity ?? 0) * (item.unitPrice ?? 0),
-      vatRate: item.vatRate ?? draft.vatRate ?? fallbackVatRate,
-      vatAmount:
-        (item.amount || (item.quantity ?? 0) * (item.unitPrice ?? 0)) *
-        ((item.vatRate ?? draft.vatRate ?? fallbackVatRate) / 100),
-    }));
+    return draft.lineItems.map((item, index) => {
+      const itemRecord = item as unknown as Record<string, unknown>;
+      const quantity = safeNumber(item.quantity, 0);
+      const unitPrice = safeNumber(item.unitPrice, 0);
+      const amount = safeNumber(item.amount, quantity * unitPrice);
+      const appliedVatRate = safeNumber(
+        item.vatRate,
+        safeNumber(draft.vatRate, fallbackVatRate),
+      );
+      const unitCode = safeString(itemRecord.unitCode, safeString(itemRecord.unit, ""));
+      const vatAmount = safeNumber(
+        itemRecord.vatAmount,
+        amount * (appliedVatRate / 100),
+      );
+
+      return {
+        id: item.id || String(index + 1),
+        description: item.description || "",
+        quantity,
+        unitCode,
+        unitPrice,
+        amount,
+        vatRate: appliedVatRate,
+        vatAmount,
+      };
+    });
   }
+
+  const subTotal = safeNumber(draft.subTotal, safeNumber(draft.amount, 0));
+  const appliedVatRate = safeNumber(draft.vatRate, fallbackVatRate);
 
   return [
     {
       id: "1",
       description: draft.project || "",
-      quantity: draft.amount || draft.subTotal ? 1 : 0,
+      quantity: subTotal > 0 ? 1 : 0,
       unitCode: "",
-      unitPrice: draft.subTotal || draft.amount || 0,
-      amount: draft.subTotal || draft.amount || 0,
-      vatRate: draft.vatRate ?? fallbackVatRate,
-      vatAmount:
-        draft.vatAmount ||
-        (draft.subTotal || draft.amount || 0) *
-          ((draft.vatRate ?? fallbackVatRate) / 100),
+      unitPrice: subTotal,
+      amount: subTotal,
+      vatRate: appliedVatRate,
+      vatAmount: safeNumber(
+        draft.vatAmount,
+        subTotal * (appliedVatRate / 100),
+      ),
     },
   ];
 }
@@ -123,13 +161,6 @@ export function QuotationInvoiceScreen() {
     (item) => item.serialNumber === serial || item.id === serial,
   );
 
-  const invoice = quotation
-    ? data.invoices.find(
-        (item) =>
-          item.quotationSerialNumber === quotation.serialNumber ||
-          (!item.quotationSerialNumber && item.quotationNo === quotation.id),
-      )
-    : undefined;
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [mode, setMode] = useState<Mode>("manual");
@@ -177,6 +208,23 @@ export function QuotationInvoiceScreen() {
     );
   }
 
+  const quotationId = quotation.id;
+  const quotationSerialNumber = quotation.serialNumber ?? quotation.id;
+  const quotationCompanyName = quotation.companyName;
+  const quotationStore = quotation.store ?? "";
+  const quotationScopeOfWork = quotation.scopeOfWork ?? "";
+  const quotationAmount = quotation.amount;
+  const quotationStatus = quotation.status;
+  const quotationCurrency = quotation.currency ?? data.company.currency ?? "";
+  const quotationCustomerAddress = quotation.customerAddress ?? "";
+  const quotationCustomerVatNumber = quotation.customerVatNumber ?? "";
+
+  const invoice = data.invoices.find(
+    (item) =>
+      item.quotationSerialNumber === quotationSerialNumber ||
+      (!item.quotationSerialNumber && item.quotationNo === quotationId),
+  );
+
   function updateLine(index: number, patch: Partial<InvoiceLineItem>) {
     setLineItems((current) => {
       const source = current.length ? current : activeLineItems;
@@ -218,8 +266,8 @@ export function QuotationInvoiceScreen() {
     if (
       data.invoices.some(
         (item) =>
-          item.quotationSerialNumber === quotation.serialNumber ||
-          (!item.quotationSerialNumber && item.quotationNo === quotation.id),
+          item.quotationSerialNumber === quotationSerialNumber ||
+          (!item.quotationSerialNumber && item.quotationNo === quotationId),
       )
     ) {
       setError(
@@ -242,20 +290,20 @@ export function QuotationInvoiceScreen() {
 
     try {
       if (mode === "upload" && file) {
-        localAttachmentKey = `${quotation.serialNumber}:${invoiceId}`;
+        localAttachmentKey = `${quotationSerialNumber}:${invoiceId}`;
         await saveLocalInvoiceAttachment(localAttachmentKey, file);
         attachmentPath = `local:${localAttachmentKey}`;
       }
 
       const record: Invoice = {
         id: invoiceId,
-        companyName: formValue(form, "companyName") || quotation.companyName,
+        companyName: formValue(form, "companyName") || quotationCompanyName,
         project:
           formValue(form, "project") ||
-          quotation.store ||
-          quotation.scopeOfWork,
-        quotationNo: quotation.id,
-        quotationSerialNumber: quotation.serialNumber,
+          quotationStore ||
+          quotationScopeOfWork,
+        quotationNo: quotationId,
+        quotationSerialNumber: quotationSerialNumber,
         invoiceDate: formValue(form, "invoiceDate") || today(),
         dueDate: formValue(form, "dueDate"),
         paymentTerms: formValue(form, "paymentTerms") || "Due on Receipt",
@@ -267,12 +315,12 @@ export function QuotationInvoiceScreen() {
         customerAddress:
           formValue(form, "customerAddress") ||
           draft?.customerAddress ||
-          quotation.customerAddress ||
+          quotationCustomerAddress ||
           "",
         customerVatNumber:
           formValue(form, "customerVatNumber") ||
           draft?.customerVatNumber ||
-          quotation.customerVatNumber ||
+          quotationCustomerVatNumber ||
           "",
         supplierName:
           formValue(form, "supplierName") || data.company.businessName,
@@ -290,7 +338,7 @@ export function QuotationInvoiceScreen() {
         supplierEmail: formValue(form, "supplierEmail"),
         currency:
           formValue(form, "currency") ||
-          quotation.currency ||
+          quotationCurrency ||
           data.company.currency,
         subTotal: totals.subTotal,
         vatRate: finalLineItems[0]?.vatRate ?? data.company.vatRate,
@@ -334,7 +382,7 @@ export function QuotationInvoiceScreen() {
     <>
       <PageHeader
         title={invoice ? "Quotation Invoice" : "Create Invoice"}
-        description={`${quotation.companyName} · ${quotation.id} · Serial ${quotation.serialNumber}`}
+        description={`${quotationCompanyName} · ${quotationId} · Serial ${quotationSerialNumber}`}
         actions={
           <Link className="button" href={routes.quotations}>
             <ArrowLeft size={14} />
@@ -346,13 +394,13 @@ export function QuotationInvoiceScreen() {
       <section className="card linked-record-banner">
         <div>
           <span>Quotation</span>
-          <strong>{quotation.companyName}</strong>
-          <p>{quotation.scopeOfWork}</p>
+          <strong>{quotationCompanyName}</strong>
+          <p>{quotationScopeOfWork}</p>
         </div>
         <div>
           <span>Amount</span>
-          <strong>{money(quotation.amount)}</strong>
-          <StatusBadge value={quotation.status} />
+          <strong>{money(quotationAmount)}</strong>
+          <StatusBadge value={quotationStatus} />
         </div>
       </section>
 
@@ -561,7 +609,7 @@ export function QuotationInvoiceScreen() {
                 <span>Customer / Company</span>
                 <input
                   name="companyName"
-                  defaultValue={draft?.companyName || quotation.companyName}
+                  defaultValue={draft?.companyName || quotationCompanyName}
                 />
               </label>
               <label className="field">
@@ -569,7 +617,7 @@ export function QuotationInvoiceScreen() {
                 <input
                   name="project"
                   defaultValue={
-                    draft?.project || quotation.store || quotation.scopeOfWork
+                    draft?.project || quotationStore || quotationScopeOfWork
                   }
                 />
               </label>
@@ -590,7 +638,7 @@ export function QuotationInvoiceScreen() {
                   name="currency"
                   defaultValue={
                     draft?.currency ||
-                    quotation.currency ||
+                    quotationCurrency ||
                     data.company.currency ||
                     "SAR"
                   }
@@ -611,7 +659,7 @@ export function QuotationInvoiceScreen() {
                 <input
                   name="customerVatNumber"
                   defaultValue={
-                    draft?.customerVatNumber || quotation.customerVatNumber
+                    draft?.customerVatNumber || quotationCustomerVatNumber
                   }
                 />
               </label>
@@ -620,7 +668,7 @@ export function QuotationInvoiceScreen() {
                 <input
                   name="customerAddress"
                   defaultValue={
-                    draft?.customerAddress || quotation.customerAddress
+                    draft?.customerAddress || quotationCustomerAddress
                   }
                 />
               </label>

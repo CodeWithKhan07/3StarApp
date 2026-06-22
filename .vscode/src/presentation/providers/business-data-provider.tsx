@@ -45,23 +45,23 @@ interface BusinessDataContextValue {
 
   createRecord: <TKey extends CollectionKey>(
     key: TKey,
-    record: EntityMap[TKey]
+    record: EntityMap[TKey],
   ) => Promise<void>;
 
   updateRecord: <TKey extends CollectionKey>(
     key: TKey,
-    record: EntityMap[TKey]
+    record: EntityMap[TKey],
   ) => Promise<void>;
 
   deleteRecord: <TKey extends CollectionKey>(
     key: TKey,
-    id: string
+    id: string,
   ) => Promise<void>;
 
   patchRecord: <TKey extends CollectionKey>(
     key: TKey,
     id: string,
-    patch: Partial<EntityMap[TKey]>
+    patch: Partial<EntityMap[TKey]>,
   ) => Promise<void>;
 
   createProject: (project: EntityMap["projects"]) => Promise<void>;
@@ -71,7 +71,7 @@ interface BusinessDataContextValue {
 
   createInvoiceFromQuotation: (
     quotationId: string,
-    draft: Partial<EntityMap["invoices"]>
+    draft: Partial<EntityMap["invoices"]>,
   ) => Promise<void>;
 
   completeInvoicePayment: (id: string) => Promise<void>;
@@ -80,26 +80,26 @@ interface BusinessDataContextValue {
     id: string,
     status: EntityMap["projects"] extends { status: infer TStatus }
       ? TStatus
-      : string
+      : string,
   ) => Promise<void>;
 
   updateQuotationStatus: (
     id: string,
     status: EntityMap["quotations"] extends { status: infer TStatus }
       ? TStatus
-      : string
+      : string,
   ) => Promise<void>;
 
   updateInvoiceStatus: (
     id: string,
     status: EntityMap["invoices"] extends { status: infer TStatus }
       ? TStatus
-      : string
+      : string,
   ) => Promise<void>;
 
   updateInvoicePayment: (
     id: string,
-    patch: Partial<EntityMap["invoices"]>
+    patch: Partial<EntityMap["invoices"]>,
   ) => Promise<void>;
 
   forceSync: () => Promise<void>;
@@ -128,19 +128,26 @@ function preserveCompanyProfile(next: BusinessDataSet): BusinessDataSet {
     })),
     company: {
       businessName: keep(company.businessName, fallback.businessName),
-      legalCompanyName: keep(company.legalCompanyName, fallback.legalCompanyName),
+      legalCompanyName: keep(
+        company.legalCompanyName,
+        fallback.legalCompanyName,
+      ),
       crNumber: keep(company.crNumber, fallback.crNumber),
       vatNumber: keep(company.vatNumber, fallback.vatNumber),
       city: keep(company.city, fallback.city),
       country: keep(company.country, fallback.country),
       phone: keep(company.phone, fallback.phone),
       currency: keep(company.currency, fallback.currency),
-      vatRate: Number.isFinite(company.vatRate) ? company.vatRate : fallback.vatRate,
+      vatRate: Number.isFinite(company.vatRate)
+        ? company.vatRate
+        : fallback.vatRate,
     },
   };
 }
 
-const BusinessDataContext = createContext<BusinessDataContextValue | null>(null);
+const BusinessDataContext = createContext<BusinessDataContextValue | null>(
+  null,
+);
 
 // Versioned keys deliberately ignore the old cache that was initialized from
 // the bundled demo workbook. Only data created/imported by this app version is
@@ -163,7 +170,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 
 function buildProjectFromQuotation(
   quotation: EntityMap["quotations"],
-  existingProjectCount: number
+  existingProjectCount: number,
 ): EntityMap["projects"] {
   return {
     id: `PROJ-${String(existingProjectCount + 1).padStart(5, "0")}`,
@@ -205,21 +212,24 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  const savePendingSync = useCallback((next: BusinessDataSet, source: string) => {
-    if (!isBrowser()) return;
+  const savePendingSync = useCallback(
+    (next: BusinessDataSet, source: string) => {
+      if (!isBrowser()) return;
 
-    try {
-      window.localStorage.setItem(
-        pendingKey,
-        JSON.stringify({
-          data: next,
-          source,
-        })
-      );
-    } catch {
-      setLastError("Pending cloud sync could not be cached locally.");
-    }
-  }, []);
+      try {
+        window.localStorage.setItem(
+          pendingKey,
+          JSON.stringify({
+            data: next,
+            source,
+          }),
+        );
+      } catch {
+        setLastError("Pending cloud sync could not be cached locally.");
+      }
+    },
+    [],
+  );
 
   const sync = useCallback(
     async (next: BusinessDataSet, source: string) => {
@@ -247,7 +257,9 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
             savePendingSync(next, source);
             setSyncState(isBrowser() && navigator.onLine ? "error" : "offline");
             setLastError(
-              error instanceof Error ? error.message : "Cloud synchronization failed."
+              error instanceof Error
+                ? error.message
+                : "Cloud synchronization failed.",
             );
           }
           throw error;
@@ -261,7 +273,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       syncQueueRef.current = queued.catch(() => undefined);
       await queued;
     },
-    [repository, savePendingSync, user]
+    [repository, savePendingSync, user],
   );
 
   const saveInstant = useCallback(
@@ -270,7 +282,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       persistLocal(next);
       void sync(next, source).catch(() => undefined);
     },
-    [persistLocal, sync]
+    [persistLocal, sync],
   );
 
   useEffect(() => {
@@ -289,7 +301,9 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
 
       if (local) {
         try {
-          const parsed = preserveCompanyProfile(JSON.parse(local) as BusinessDataSet);
+          const parsed = preserveCompanyProfile(
+            JSON.parse(local) as BusinessDataSet,
+          );
           setData(parsed);
         } catch {
           window.localStorage.removeItem(localKey);
@@ -330,7 +344,9 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
         if (!active) return;
 
         setLastError(
-          error instanceof Error ? error.message : "Cloud data could not be loaded."
+          error instanceof Error
+            ? error.message
+            : "Cloud data could not be loaded.",
         );
         setSyncState(isBrowser() && navigator.onLine ? "error" : "offline");
       })
@@ -372,22 +388,30 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       const parsed = await parseBusinessWorkbook(file, data);
 
       const projects = parsed.projects.length ? parsed.projects : data.projects;
-      const quotations = parsed.quotations.length ? parsed.quotations : data.quotations;
+      const quotations = parsed.quotations.length
+        ? parsed.quotations
+        : data.quotations;
 
       const linkedProjects = [...projects];
       const linkedQuotations = quotations.map((quotation) => {
         const serialized = {
           ...quotation,
-          serialNumber: ensureQuotationSerial(quotation.id, quotation.serialNumber),
+          serialNumber: ensureQuotationSerial(
+            quotation.id,
+            quotation.serialNumber,
+          ),
         };
         if (serialized.linkedProjectId) return serialized;
 
         const hasProject = linkedProjects.some(
-          (project) => project.quotationNo === serialized.id
+          (project) => project.quotationNo === serialized.id,
         );
         if (hasProject) return serialized;
 
-        const project = buildProjectFromQuotation(serialized, linkedProjects.length);
+        const project = buildProjectFromQuotation(
+          serialized,
+          linkedProjects.length,
+        );
         linkedProjects.unshift(project);
 
         return { ...serialized, linkedProjectId: project.id };
@@ -405,7 +429,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
 
       return parsed;
     },
-    [data, saveInstant]
+    [data, saveInstant],
   );
 
   const createRecord = useCallback(
@@ -417,7 +441,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
 
       saveInstant(next, `${key}-create`);
     },
-    [data, saveInstant]
+    [data, saveInstant],
   );
 
   const updateRecord = useCallback(
@@ -436,14 +460,14 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
 
       saveInstant(next, `${key}-update`);
     },
-    [data, saveInstant]
+    [data, saveInstant],
   );
 
   const patchRecord = useCallback(
     async <TKey extends CollectionKey>(
       key: TKey,
       id: string,
-      patch: Partial<EntityMap[TKey]>
+      patch: Partial<EntityMap[TKey]>,
     ) => {
       if (!id.trim()) {
         throw new Error("Record id is required.");
@@ -459,7 +483,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
 
       saveInstant(next, `${key}-patch`);
     },
-    [data, saveInstant]
+    [data, saveInstant],
   );
 
   const deleteRecord = useCallback(
@@ -478,21 +502,21 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
 
       saveInstant(next, `${key}-delete`);
     },
-    [data, saveInstant]
+    [data, saveInstant],
   );
 
   const createProject = useCallback(
     async (project: EntityMap["projects"]) => {
       await createRecord("projects", project);
     },
-    [createRecord]
+    [createRecord],
   );
 
   const updateProject = useCallback(
     async (project: EntityMap["projects"]) => {
       await updateRecord("projects", project);
     },
-    [updateRecord]
+    [updateRecord],
   );
 
   const createQuotation = useCallback(
@@ -501,7 +525,10 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
         ...quotation,
         serialNumber: quotation.serialNumber || createQuotationSerial(),
       };
-      const project = buildProjectFromQuotation(serialized, data.projects.length);
+      const project = buildProjectFromQuotation(
+        serialized,
+        data.projects.length,
+      );
       const linkedQuotation: EntityMap["quotations"] = {
         ...serialized,
         linkedProjectId: project.id,
@@ -515,7 +542,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
 
       saveInstant(next, "quotations-create");
     },
-    [data, saveInstant]
+    [data, saveInstant],
   );
 
   const createInvoiceFromQuotation = useCallback(
@@ -525,11 +552,17 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       if (!quotation) {
         throw new Error("Quotation not found.");
       }
-      if (data.invoices.some((invoice) =>
-        invoice.quotationSerialNumber === quotation.serialNumber ||
-        (!invoice.quotationSerialNumber && invoice.quotationNo === quotation.id)
-      )) {
-        throw new Error("This quotation already has an invoice. Open its invoice page to view or edit it.");
+      if (
+        data.invoices.some(
+          (invoice) =>
+            invoice.quotationSerialNumber === quotation.serialNumber ||
+            (!invoice.quotationSerialNumber &&
+              invoice.quotationNo === quotation.id),
+        )
+      ) {
+        throw new Error(
+          "This quotation already has an invoice. Open its invoice page to view or edit it.",
+        );
       }
 
       const invoice: EntityMap["invoices"] = {
@@ -557,7 +590,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
           id: String(index + 1),
           description: item.description,
           quantity: item.quantity,
-          unitCode: "EA",
+          unitCode: "",
           unitPrice: item.unitPrice,
           amount: item.amount,
           vatRate: item.vatRate,
@@ -576,7 +609,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
 
       saveInstant(next, "invoices-create-from-quotation");
     },
-    [data, saveInstant]
+    [data, saveInstant],
   );
 
   const completeInvoicePayment = useCallback(
@@ -597,13 +630,16 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       };
 
       const linkedProject = data.projects.find((project) => {
-        if (invoice.quotationNo) return project.quotationNo === invoice.quotationNo;
+        if (invoice.quotationNo)
+          return project.quotationNo === invoice.quotationNo;
         return project.company === invoice.companyName;
       });
 
       const next: BusinessDataSet = {
         ...data,
-        invoices: data.invoices.map((item) => (item.id === id ? updatedInvoice : item)),
+        invoices: data.invoices.map((item) =>
+          item.id === id ? updatedInvoice : item,
+        ),
         projects: linkedProject
           ? data.projects.map((project) =>
               project.id === linkedProject.id
@@ -613,14 +649,14 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
                     completion: 100,
                     actualCompletion: paymentDate,
                   }
-                : project
+                : project,
             )
           : data.projects,
       };
 
       saveInstant(next, "invoices-complete-payment");
     },
-    [data, saveInstant]
+    [data, saveInstant],
   );
 
   const updateProjectStatus = useCallback(
@@ -628,11 +664,13 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       id: string,
       status: EntityMap["projects"] extends { status: infer TStatus }
         ? TStatus
-        : string
+        : string,
     ) => {
-      await patchRecord("projects", id, { status } as Partial<EntityMap["projects"]>);
+      await patchRecord("projects", id, { status } as Partial<
+        EntityMap["projects"]
+      >);
     },
-    [patchRecord]
+    [patchRecord],
   );
 
   const updateQuotationStatus = useCallback(
@@ -640,13 +678,13 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       id: string,
       status: EntityMap["quotations"] extends { status: infer TStatus }
         ? TStatus
-        : string
+        : string,
     ) => {
       await patchRecord("quotations", id, {
         status,
       } as Partial<EntityMap["quotations"]>);
     },
-    [patchRecord]
+    [patchRecord],
   );
 
   const updateInvoiceStatus = useCallback(
@@ -654,20 +692,20 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       id: string,
       status: EntityMap["invoices"] extends { status: infer TStatus }
         ? TStatus
-        : string
+        : string,
     ) => {
       await patchRecord("invoices", id, {
         status,
       } as Partial<EntityMap["invoices"]>);
     },
-    [patchRecord]
+    [patchRecord],
   );
 
   const updateInvoicePayment = useCallback(
     async (id: string, patch: Partial<EntityMap["invoices"]>) => {
       await patchRecord("invoices", id, patch);
     },
-    [patchRecord]
+    [patchRecord],
   );
 
   const forceSync = useCallback(async () => {
@@ -722,7 +760,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       updateProjectStatus,
       updateQuotationStatus,
       updateRecord,
-    ]
+    ],
   );
 
   return (
@@ -736,7 +774,9 @@ export function useBusinessData() {
   const value = useContext(BusinessDataContext);
 
   if (!value) {
-    throw new Error("useBusinessData must be used inside BusinessDataProvider.");
+    throw new Error(
+      "useBusinessData must be used inside BusinessDataProvider.",
+    );
   }
 
   return value;

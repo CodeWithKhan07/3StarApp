@@ -41,36 +41,57 @@ const today = () => new Date().toISOString().slice(0, 10);
 type InvoiceLineItem = NonNullable<Invoice["lineItems"]>[number];
 type Mode = "manual" | "upload";
 
+function safeNumber(value: unknown, fallback = 0) {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function safeString(value: unknown, fallback = "") {
+  return typeof value === "string" && value.trim() ? value : fallback;
+}
+
 function createManualLineItems(
   quotation: Quotation,
-  vatRate: number
+  vatRate: number,
 ): InvoiceLineItem[] {
   if (quotation.lineItems?.length) {
-    return quotation.lineItems.map((item, index) => ({
-      id: String(index + 1),
-      description: item.description || quotation.scopeOfWork,
-      quantity: item.quantity || 1,
-      unitCode: "EA",
-      unitPrice: item.unitPrice || item.amount || quotation.amount,
-      amount: item.amount || (item.quantity || 1) * (item.unitPrice || 0),
-      vatRate: item.vatRate ?? vatRate,
-      vatAmount:
-        item.vatAmount ??
-        (item.amount || (item.quantity || 1) * (item.unitPrice || 0)) *
-          ((item.vatRate ?? vatRate) / 100),
-    }));
+    return quotation.lineItems.map((item, index) => {
+      const itemRecord = item as unknown as Record<string, unknown>;
+      const quantity = safeNumber(item.quantity, 0);
+      const unitPrice = safeNumber(item.unitPrice, 0);
+      const amount = safeNumber(item.amount, quantity * unitPrice);
+      const appliedVatRate = safeNumber(item.vatRate, vatRate);
+      const unitCode = safeString(itemRecord.unitCode, safeString(itemRecord.unit, ""));
+      const vatAmount = safeNumber(
+        itemRecord.vatAmount,
+        amount * (appliedVatRate / 100),
+      );
+
+      return {
+        id: String(index + 1),
+        description: item.description || quotation.scopeOfWork || "",
+        quantity,
+        unitCode,
+        unitPrice,
+        amount,
+        vatRate: appliedVatRate,
+        vatAmount,
+      };
+    });
   }
 
-  const subTotal = quotation.subTotal ?? quotation.amount;
-  const appliedVatRate = quotation.vatRate ?? vatRate;
-  const vatAmount = quotation.vatAmount ?? subTotal * (appliedVatRate / 100);
+  const subTotal = safeNumber(quotation.subTotal, safeNumber(quotation.amount, 0));
+  const appliedVatRate = safeNumber(quotation.vatRate, vatRate);
+  const vatAmount = safeNumber(
+    quotation.vatAmount,
+    subTotal * (appliedVatRate / 100),
+  );
 
   return [
     {
       id: "1",
-      description: quotation.scopeOfWork || "Invoice item",
-      quantity: 1,
-      unitCode: "EA",
+      description: quotation.scopeOfWork || "",
+      quantity: subTotal > 0 ? 1 : 0,
+      unitCode: "",
       unitPrice: subTotal,
       amount: subTotal,
       vatRate: appliedVatRate,
@@ -81,36 +102,53 @@ function createManualLineItems(
 
 function createImportedLineItems(
   draft: InvoiceImportDraft,
-  fallbackVatRate: number
+  fallbackVatRate: number,
 ): InvoiceLineItem[] {
   if (draft.lineItems?.length) {
-    return draft.lineItems.map((item, index) => ({
-      id: item.id || String(index + 1),
-      description: item.description || "Invoice item",
-      quantity: item.quantity || 1,
-      unitCode: item.unitCode || "EA",
-      unitPrice: item.unitPrice || 0,
-      amount: item.amount || (item.quantity || 1) * (item.unitPrice || 0),
-      vatRate: item.vatRate ?? draft.vatRate ?? fallbackVatRate,
-      vatAmount:
-        (item.amount || (item.quantity || 1) * (item.unitPrice || 0)) *
-        ((item.vatRate ?? draft.vatRate ?? fallbackVatRate) / 100),
-    }));
+    return draft.lineItems.map((item, index) => {
+      const itemRecord = item as unknown as Record<string, unknown>;
+      const quantity = safeNumber(item.quantity, 0);
+      const unitPrice = safeNumber(item.unitPrice, 0);
+      const amount = safeNumber(item.amount, quantity * unitPrice);
+      const appliedVatRate = safeNumber(
+        item.vatRate,
+        safeNumber(draft.vatRate, fallbackVatRate),
+      );
+      const unitCode = safeString(itemRecord.unitCode, safeString(itemRecord.unit, ""));
+      const vatAmount = safeNumber(
+        itemRecord.vatAmount,
+        amount * (appliedVatRate / 100),
+      );
+
+      return {
+        id: item.id || String(index + 1),
+        description: item.description || "",
+        quantity,
+        unitCode,
+        unitPrice,
+        amount,
+        vatRate: appliedVatRate,
+        vatAmount,
+      };
+    });
   }
+
+  const subTotal = safeNumber(draft.subTotal, safeNumber(draft.amount, 0));
+  const appliedVatRate = safeNumber(draft.vatRate, fallbackVatRate);
 
   return [
     {
       id: "1",
-      description: draft.project || "Invoice item",
-      quantity: 1,
-      unitCode: "EA",
-      unitPrice: draft.subTotal || draft.amount || 0,
-      amount: draft.subTotal || draft.amount || 0,
-      vatRate: draft.vatRate ?? fallbackVatRate,
-      vatAmount:
-        draft.vatAmount ||
-        (draft.subTotal || draft.amount || 0) *
-          ((draft.vatRate ?? fallbackVatRate) / 100),
+      description: draft.project || "",
+      quantity: subTotal > 0 ? 1 : 0,
+      unitCode: "",
+      unitPrice: subTotal,
+      amount: subTotal,
+      vatRate: appliedVatRate,
+      vatAmount: safeNumber(
+        draft.vatAmount,
+        subTotal * (appliedVatRate / 100),
+      ),
     },
   ];
 }
@@ -120,16 +158,9 @@ export function QuotationInvoiceScreen() {
   const { data, createRecord } = useBusinessData();
 
   const quotation = data.quotations.find(
-    (item) => item.serialNumber === serial || item.id === serial
+    (item) => item.serialNumber === serial || item.id === serial,
   );
 
-  const invoice = quotation
-    ? data.invoices.find(
-        (item) =>
-          item.quotationSerialNumber === quotation.serialNumber ||
-          (!item.quotationSerialNumber && item.quotationNo === quotation.id)
-      )
-    : undefined;
 
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [mode, setMode] = useState<Mode>("manual");
@@ -148,10 +179,14 @@ export function QuotationInvoiceScreen() {
   const activeLineItems = lineItems.length ? lineItems : manualLineItems;
 
   const totals = useMemo(() => {
-    const subTotal = activeLineItems.reduce((sum, item) => sum + item.amount, 0);
+    const subTotal = activeLineItems.reduce(
+      (sum, item) => sum + item.amount,
+      0,
+    );
     const vatAmount = activeLineItems.reduce(
-      (sum, item) => sum + (item.vatAmount ?? item.amount * item.vatRate / 100),
-      0
+      (sum, item) =>
+        sum + (item.vatAmount ?? (item.amount * item.vatRate) / 100),
+      0,
     );
 
     return {
@@ -172,6 +207,23 @@ export function QuotationInvoiceScreen() {
       </section>
     );
   }
+
+  const quotationId = quotation.id;
+  const quotationSerialNumber = quotation.serialNumber ?? quotation.id;
+  const quotationCompanyName = quotation.companyName;
+  const quotationStore = quotation.store ?? "";
+  const quotationScopeOfWork = quotation.scopeOfWork ?? "";
+  const quotationAmount = quotation.amount;
+  const quotationStatus = quotation.status;
+  const quotationCurrency = quotation.currency ?? data.company.currency ?? "";
+  const quotationCustomerAddress = quotation.customerAddress ?? "";
+  const quotationCustomerVatNumber = quotation.customerVatNumber ?? "";
+
+  const invoice = data.invoices.find(
+    (item) =>
+      item.quotationSerialNumber === quotationSerialNumber ||
+      (!item.quotationSerialNumber && item.quotationNo === quotationId),
+  );
 
   function updateLine(index: number, patch: Partial<InvoiceLineItem>) {
     setLineItems((current) => {
@@ -200,7 +252,9 @@ export function QuotationInvoiceScreen() {
       setFile(selected);
       setLineItems(createImportedLineItems(parsed, data.company.vatRate));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Invoice could not be read.");
+      setError(
+        caught instanceof Error ? caught.message : "Invoice could not be read.",
+      );
     } finally {
       setReading(false);
     }
@@ -212,17 +266,20 @@ export function QuotationInvoiceScreen() {
     if (
       data.invoices.some(
         (item) =>
-          item.quotationSerialNumber === quotation.serialNumber ||
-          (!item.quotationSerialNumber && item.quotationNo === quotation.id)
+          item.quotationSerialNumber === quotationSerialNumber ||
+          (!item.quotationSerialNumber && item.quotationNo === quotationId),
       )
     ) {
-      setError("This quotation already has an invoice. Refresh the page to view or edit it.");
+      setError(
+        "This quotation already has an invoice. Refresh the page to view or edit it.",
+      );
       return;
     }
 
     const form = new FormData(event.currentTarget);
     const invoiceId =
-      formValue(form, "id") || `INV-${String(data.invoices.length + 1).padStart(5, "0")}`;
+      formValue(form, "id") ||
+      `INV-${String(data.invoices.length + 1).padStart(5, "0")}`;
 
     const finalLineItems = activeLineItems;
     let localAttachmentKey = "";
@@ -233,17 +290,20 @@ export function QuotationInvoiceScreen() {
 
     try {
       if (mode === "upload" && file) {
-        localAttachmentKey = `${quotation.serialNumber}:${invoiceId}`;
+        localAttachmentKey = `${quotationSerialNumber}:${invoiceId}`;
         await saveLocalInvoiceAttachment(localAttachmentKey, file);
         attachmentPath = `local:${localAttachmentKey}`;
       }
 
       const record: Invoice = {
         id: invoiceId,
-        companyName: formValue(form, "companyName") || quotation.companyName,
-        project: formValue(form, "project") || quotation.store || quotation.scopeOfWork,
-        quotationNo: quotation.id,
-        quotationSerialNumber: quotation.serialNumber,
+        companyName: formValue(form, "companyName") || quotationCompanyName,
+        project:
+          formValue(form, "project") ||
+          quotationStore ||
+          quotationScopeOfWork,
+        quotationNo: quotationId,
+        quotationSerialNumber: quotationSerialNumber,
         invoiceDate: formValue(form, "invoiceDate") || today(),
         dueDate: formValue(form, "dueDate"),
         paymentTerms: formValue(form, "paymentTerms") || "Due on Receipt",
@@ -255,25 +315,31 @@ export function QuotationInvoiceScreen() {
         customerAddress:
           formValue(form, "customerAddress") ||
           draft?.customerAddress ||
-          quotation.customerAddress ||
+          quotationCustomerAddress ||
           "",
         customerVatNumber:
           formValue(form, "customerVatNumber") ||
           draft?.customerVatNumber ||
-          quotation.customerVatNumber ||
+          quotationCustomerVatNumber ||
           "",
-        supplierName: formValue(form, "supplierName") || data.company.businessName,
+        supplierName:
+          formValue(form, "supplierName") || data.company.businessName,
         supplierLegalName:
           formValue(form, "supplierLegalName") || data.company.legalCompanyName,
         supplierAddress:
           formValue(form, "supplierAddress") ||
           draft?.supplierAddress ||
           `${data.company.city}, ${data.company.country}`,
-        supplierCrNumber: formValue(form, "supplierCrNumber") || data.company.crNumber,
-        supplierVatNumber: formValue(form, "supplierVatNumber") || data.company.vatNumber,
+        supplierCrNumber:
+          formValue(form, "supplierCrNumber") || data.company.crNumber,
+        supplierVatNumber:
+          formValue(form, "supplierVatNumber") || data.company.vatNumber,
         supplierPhone: formValue(form, "supplierPhone") || data.company.phone,
         supplierEmail: formValue(form, "supplierEmail"),
-        currency: formValue(form, "currency") || quotation.currency || data.company.currency,
+        currency:
+          formValue(form, "currency") ||
+          quotationCurrency ||
+          data.company.currency,
         subTotal: totals.subTotal,
         vatRate: finalLineItems[0]?.vatRate ?? data.company.vatRate,
         vatAmount: totals.vatAmount,
@@ -288,7 +354,11 @@ export function QuotationInvoiceScreen() {
 
       await createRecord("invoices", record);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Invoice could not be saved.");
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Invoice could not be saved.",
+      );
     } finally {
       setSaving(false);
     }
@@ -302,7 +372,9 @@ export function QuotationInvoiceScreen() {
     try {
       await exportInvoicePdf(invoice, data.company);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Invoice export failed.");
+      setError(
+        caught instanceof Error ? caught.message : "Invoice export failed.",
+      );
     }
   }
 
@@ -310,7 +382,7 @@ export function QuotationInvoiceScreen() {
     <>
       <PageHeader
         title={invoice ? "Quotation Invoice" : "Create Invoice"}
-        description={`${quotation.companyName} · ${quotation.id} · Serial ${quotation.serialNumber}`}
+        description={`${quotationCompanyName} · ${quotationId} · Serial ${quotationSerialNumber}`}
         actions={
           <Link className="button" href={routes.quotations}>
             <ArrowLeft size={14} />
@@ -322,13 +394,13 @@ export function QuotationInvoiceScreen() {
       <section className="card linked-record-banner">
         <div>
           <span>Quotation</span>
-          <strong>{quotation.companyName}</strong>
-          <p>{quotation.scopeOfWork}</p>
+          <strong>{quotationCompanyName}</strong>
+          <p>{quotationScopeOfWork}</p>
         </div>
         <div>
           <span>Amount</span>
-          <strong>{money(quotation.amount)}</strong>
-          <StatusBadge value={quotation.status} />
+          <strong>{money(quotationAmount)}</strong>
+          <StatusBadge value={quotationStatus} />
         </div>
       </section>
 
@@ -362,12 +434,21 @@ export function QuotationInvoiceScreen() {
           </div>
 
           <div className="form-actions">
-            <button className="button" type="button" onClick={() => void exportLinkedInvoice()}>
+            <button
+              className="button"
+              type="button"
+              onClick={() => void exportLinkedInvoice()}
+            >
               <Download size={14} />
               Export PDF
             </button>
             {invoice.attachmentUrl ? (
-              <a className="button" href={invoice.attachmentUrl} target="_blank" rel="noreferrer">
+              <a
+                className="button"
+                href={invoice.attachmentUrl}
+                target="_blank"
+                rel="noreferrer"
+              >
                 <ExternalLink size={14} />
                 View Attachment
               </a>
@@ -376,8 +457,14 @@ export function QuotationInvoiceScreen() {
                 className="button"
                 type="button"
                 onClick={() =>
-                  void downloadLocalInvoiceAttachment(invoice.localAttachmentKey!).catch((caught) =>
-                    setError(caught instanceof Error ? caught.message : "Attachment unavailable.")
+                  void downloadLocalInvoiceAttachment(
+                    invoice.localAttachmentKey!,
+                  ).catch((caught) =>
+                    setError(
+                      caught instanceof Error
+                        ? caught.message
+                        : "Attachment unavailable.",
+                    ),
                   )
                 }
               >
@@ -385,7 +472,10 @@ export function QuotationInvoiceScreen() {
                 Download Attachment
               </button>
             ) : null}
-            <Link className="button button--primary" href={`${routes.editInvoice}?id=${encodeURIComponent(invoice.id)}`}>
+            <Link
+              className="button button--primary"
+              href={`${routes.editInvoice}?id=${encodeURIComponent(invoice.id)}`}
+            >
               <Edit3 size={14} />
               Edit Invoice
             </Link>
@@ -397,7 +487,10 @@ export function QuotationInvoiceScreen() {
             <header>
               <div>
                 <h2>Invoice Source</h2>
-                <p>Choose whether to create the invoice manually in the app or upload an existing invoice file.</p>
+                <p>
+                  Choose whether to create the invoice manually in the app or
+                  upload an existing invoice file.
+                </p>
               </div>
             </header>
 
@@ -414,7 +507,10 @@ export function QuotationInvoiceScreen() {
               >
                 <FilePlus2 size={22} />
                 <strong>Create in App</strong>
-                <span>Build a clean invoice from this quotation and edit the fields below.</span>
+                <span>
+                  Build a clean invoice from this quotation and edit the fields
+                  below.
+                </span>
               </button>
 
               <button
@@ -427,7 +523,10 @@ export function QuotationInvoiceScreen() {
               >
                 <FileUp size={22} />
                 <strong>Upload Existing</strong>
-                <span>Upload a PDF/Excel invoice, review the parsed values, and attach it.</span>
+                <span>
+                  Upload a PDF/Excel invoice, review the parsed values, and
+                  attach it.
+                </span>
               </button>
             </div>
 
@@ -444,10 +543,24 @@ export function QuotationInvoiceScreen() {
             />
 
             {mode === "upload" ? (
-              <button className="drop-zone" type="button" onClick={() => inputRef.current?.click()}>
-                {reading ? <LoaderCircle className="spin" size={34} /> : <FileUp size={34} />}
-                <strong>{reading ? "Reading invoice..." : file?.name || "Choose invoice PDF or Excel"}</strong>
-                <span>After upload, the extracted values will appear in the form.</span>
+              <button
+                className="drop-zone"
+                type="button"
+                onClick={() => inputRef.current?.click()}
+              >
+                {reading ? (
+                  <LoaderCircle className="spin" size={34} />
+                ) : (
+                  <FileUp size={34} />
+                )}
+                <strong>
+                  {reading
+                    ? "Reading invoice..."
+                    : file?.name || "Choose invoice PDF or Excel"}
+                </strong>
+                <span>
+                  After upload, the extracted values will appear in the form.
+                </span>
               </button>
             ) : null}
           </section>
@@ -455,35 +568,65 @@ export function QuotationInvoiceScreen() {
           <section className="card form-section">
             <header>
               <div>
-                <h2>{mode === "upload" && draft ? "Review Imported Invoice" : "Invoice Details"}</h2>
-                <p>All fields stay editable before the invoice is linked to this quotation.</p>
+                <h2>
+                  {mode === "upload" && draft
+                    ? "Review Imported Invoice"
+                    : "Invoice Details"}
+                </h2>
+                <p>
+                  All fields stay editable before the invoice is linked to this
+                  quotation.
+                </p>
               </div>
             </header>
 
             <div className="form-grid">
               <label className="field">
                 <span>Invoice No.</span>
-                <input name="id" defaultValue={draft?.id} placeholder="Generated automatically" />
+                <input
+                  name="id"
+                  defaultValue={draft?.id}
+                  placeholder="Generated automatically"
+                />
               </label>
               <label className="field">
                 <span>Invoice Date</span>
-                <input name="invoiceDate" type="date" defaultValue={draft?.invoiceDate || today()} />
+                <input
+                  name="invoiceDate"
+                  type="date"
+                  defaultValue={draft?.invoiceDate || today()}
+                />
               </label>
               <label className="field">
                 <span>Due Date</span>
-                <input name="dueDate" type="date" defaultValue={draft?.dueDate} />
+                <input
+                  name="dueDate"
+                  type="date"
+                  defaultValue={draft?.dueDate}
+                />
               </label>
               <label className="field">
                 <span>Customer / Company</span>
-                <input name="companyName" defaultValue={draft?.companyName || quotation.companyName} />
+                <input
+                  name="companyName"
+                  defaultValue={draft?.companyName || quotationCompanyName}
+                />
               </label>
               <label className="field">
                 <span>Job / Project</span>
-                <input name="project" defaultValue={draft?.project || quotation.store || quotation.scopeOfWork} />
+                <input
+                  name="project"
+                  defaultValue={
+                    draft?.project || quotationStore || quotationScopeOfWork
+                  }
+                />
               </label>
               <label className="field">
                 <span>Payment Terms</span>
-                <input name="paymentTerms" defaultValue={draft?.paymentTerms || "Due on Receipt"} />
+                <input
+                  name="paymentTerms"
+                  defaultValue={draft?.paymentTerms || "Due on Receipt"}
+                />
               </label>
               <label className="field">
                 <span>ZATCA UUID</span>
@@ -491,67 +634,152 @@ export function QuotationInvoiceScreen() {
               </label>
               <label className="field">
                 <span>Currency</span>
-                <input name="currency" defaultValue={draft?.currency || quotation.currency || data.company.currency || "SAR"} />
+                <input
+                  name="currency"
+                  defaultValue={
+                    draft?.currency ||
+                    quotationCurrency ||
+                    data.company.currency ||
+                    "SAR"
+                  }
+                />
               </label>
               <label className="field">
                 <span>Amount Received</span>
-                <input name="received" type="number" min="0" step="0.01" defaultValue={draft?.received || 0} />
+                <input
+                  name="received"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  defaultValue={draft?.received || 0}
+                />
               </label>
               <label className="field">
                 <span>Customer VAT</span>
-                <input name="customerVatNumber" defaultValue={draft?.customerVatNumber || quotation.customerVatNumber} />
+                <input
+                  name="customerVatNumber"
+                  defaultValue={
+                    draft?.customerVatNumber || quotationCustomerVatNumber
+                  }
+                />
               </label>
               <label className="field field--full">
                 <span>Customer Address</span>
-                <input name="customerAddress" defaultValue={draft?.customerAddress || quotation.customerAddress} />
+                <input
+                  name="customerAddress"
+                  defaultValue={
+                    draft?.customerAddress || quotationCustomerAddress
+                  }
+                />
               </label>
               <label className="field">
                 <span>Supplier Name</span>
-                <input name="supplierName" defaultValue={draft?.supplierName || data.company.businessName} />
+                <input
+                  name="supplierName"
+                  defaultValue={
+                    draft?.supplierName || data.company.businessName
+                  }
+                />
               </label>
               <label className="field">
                 <span>Supplier Legal Name</span>
-                <input name="supplierLegalName" defaultValue={draft?.supplierLegalName || data.company.legalCompanyName} />
+                <input
+                  name="supplierLegalName"
+                  defaultValue={
+                    draft?.supplierLegalName || data.company.legalCompanyName
+                  }
+                />
               </label>
               <label className="field">
                 <span>Supplier CR</span>
-                <input name="supplierCrNumber" defaultValue={draft?.supplierCrNumber || data.company.crNumber} />
+                <input
+                  name="supplierCrNumber"
+                  defaultValue={
+                    draft?.supplierCrNumber || data.company.crNumber
+                  }
+                />
               </label>
               <label className="field">
                 <span>Supplier VAT</span>
-                <input name="supplierVatNumber" defaultValue={draft?.supplierVatNumber || data.company.vatNumber} />
+                <input
+                  name="supplierVatNumber"
+                  defaultValue={
+                    draft?.supplierVatNumber || data.company.vatNumber
+                  }
+                />
               </label>
               <label className="field">
                 <span>Supplier Phone</span>
-                <input name="supplierPhone" defaultValue={draft?.supplierPhone || data.company.phone} />
+                <input
+                  name="supplierPhone"
+                  defaultValue={draft?.supplierPhone || data.company.phone}
+                />
               </label>
               <label className="field">
                 <span>Supplier Email</span>
-                <input name="supplierEmail" type="email" defaultValue={draft?.supplierEmail} />
+                <input
+                  name="supplierEmail"
+                  type="email"
+                  defaultValue={draft?.supplierEmail}
+                />
               </label>
               <label className="field field--full">
                 <span>Supplier Address</span>
-                <input name="supplierAddress" defaultValue={draft?.supplierAddress || `${data.company.city}, ${data.company.country}`} />
+                <input
+                  name="supplierAddress"
+                  defaultValue={
+                    draft?.supplierAddress ||
+                    `${data.company.city}, ${data.company.country}`
+                  }
+                />
               </label>
               <label className="field">
                 <span>Subtotal</span>
-                <input name="subTotal" type="number" step="0.01" value={totals.subTotal.toFixed(2)} readOnly />
+                <input
+                  name="subTotal"
+                  type="number"
+                  step="0.01"
+                  value={totals.subTotal.toFixed(2)}
+                  readOnly
+                />
               </label>
               <label className="field">
                 <span>VAT Amount</span>
-                <input name="vatAmount" type="number" step="0.01" value={totals.vatAmount.toFixed(2)} readOnly />
+                <input
+                  name="vatAmount"
+                  type="number"
+                  step="0.01"
+                  value={totals.vatAmount.toFixed(2)}
+                  readOnly
+                />
               </label>
               <label className="field">
                 <span>Discount</span>
-                <input name="discountAmount" type="number" min="0" step="0.01" defaultValue={draft?.discountAmount || 0} />
+                <input
+                  name="discountAmount"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  defaultValue={draft?.discountAmount || 0}
+                />
               </label>
               <label className="field">
                 <span>Total Amount</span>
-                <input name="amount" type="number" step="0.01" value={totals.amount.toFixed(2)} readOnly />
+                <input
+                  name="amount"
+                  type="number"
+                  step="0.01"
+                  value={totals.amount.toFixed(2)}
+                  readOnly
+                />
               </label>
               <label className="field field--full">
                 <span>Remarks</span>
-                <textarea name="remarks" rows={3} defaultValue={draft?.remarks} />
+                <textarea
+                  name="remarks"
+                  rows={3}
+                  defaultValue={draft?.remarks}
+                />
               </label>
             </div>
           </section>
@@ -560,13 +788,19 @@ export function QuotationInvoiceScreen() {
             <header>
               <div>
                 <h2>Invoice Items</h2>
-                <p>Each item is editable. On mobile, every line is displayed as its own compact card.</p>
+                <p>
+                  Each item is editable. On mobile, every line is displayed as
+                  its own compact card.
+                </p>
               </div>
             </header>
 
             <div className="invoice-line-card-list">
               {activeLineItems.map((item, index) => (
-                <article className="invoice-line-card" key={`${item.id}-${index}`}>
+                <article
+                  className="invoice-line-card"
+                  key={`${item.id}-${index}`}
+                >
                   <header>
                     <strong>Item {index + 1}</strong>
                     <button
@@ -577,7 +811,10 @@ export function QuotationInvoiceScreen() {
                         setLineItems((items) =>
                           (items.length ? items : activeLineItems)
                             .filter((_, itemIndex) => itemIndex !== index)
-                            .map((entry, itemIndex) => ({ ...entry, id: String(itemIndex + 1) }))
+                            .map((entry, itemIndex) => ({
+                              ...entry,
+                              id: String(itemIndex + 1),
+                            })),
                         )
                       }
                     >
@@ -587,23 +824,64 @@ export function QuotationInvoiceScreen() {
                   <div className="form-grid">
                     <label className="field field--full">
                       <span>Description</span>
-                      <textarea value={item.description} onChange={(event) => updateLine(index, { description: event.target.value })} />
+                      <textarea
+                        value={item.description}
+                        onChange={(event) =>
+                          updateLine(index, { description: event.target.value })
+                        }
+                      />
                     </label>
                     <label className="field">
                       <span>Quantity</span>
-                      <input type="number" min="0" step="0.01" value={item.quantity} onChange={(event) => updateLine(index, { quantity: Number(event.target.value) || 0 })} />
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.quantity}
+                        onChange={(event) =>
+                          updateLine(index, {
+                            quantity: Number(event.target.value) || 0,
+                          })
+                        }
+                      />
                     </label>
                     <label className="field">
                       <span>Unit</span>
-                      <input value={item.unitCode} onChange={(event) => updateLine(index, { unitCode: event.target.value })} />
+                      <input
+                        value={item.unitCode}
+                        onChange={(event) =>
+                          updateLine(index, { unitCode: event.target.value })
+                        }
+                      />
                     </label>
                     <label className="field">
                       <span>Unit Price</span>
-                      <input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updateLine(index, { unitPrice: Number(event.target.value) || 0 })} />
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.unitPrice}
+                        onChange={(event) =>
+                          updateLine(index, {
+                            unitPrice: Number(event.target.value) || 0,
+                          })
+                        }
+                      />
                     </label>
                     <label className="field">
                       <span>VAT %</span>
-                      <input type="number" min="0" max="100" step="0.01" value={item.vatRate} onChange={(event) => updateLine(index, { vatRate: Number(event.target.value) || 0 })} />
+                      <input
+                        type="number"
+                        min="0"
+                        max="100"
+                        step="0.01"
+                        value={item.vatRate}
+                        onChange={(event) =>
+                          updateLine(index, {
+                            vatRate: Number(event.target.value) || 0,
+                          })
+                        }
+                      />
                     </label>
                   </div>
                 </article>
@@ -611,7 +889,10 @@ export function QuotationInvoiceScreen() {
             </div>
 
             <div className="form-actions">
-              <span>Subtotal: {money(totals.subTotal)} · VAT: {money(totals.vatAmount)} · Total: {money(totals.amount)}</span>
+              <span>
+                Subtotal: {money(totals.subTotal)} · VAT:{" "}
+                {money(totals.vatAmount)} · Total: {money(totals.amount)}
+              </span>
               <button
                 className="button"
                 type="button"
@@ -621,8 +902,8 @@ export function QuotationInvoiceScreen() {
                     {
                       id: String(activeLineItems.length + 1),
                       description: "",
-                      quantity: 1,
-                      unitCode: "EA",
+                      quantity: 0,
+                      unitCode: "",
                       unitPrice: 0,
                       amount: 0,
                       vatRate: data.company.vatRate,
@@ -637,18 +918,26 @@ export function QuotationInvoiceScreen() {
             </div>
           </section>
 
-          {error ? <div className="form-message form-message--error">{error}</div> : null}
+          {error ? (
+            <div className="form-message form-message--error">{error}</div>
+          ) : null}
 
           <div className="form-actions">
             <button className="button button--primary" disabled={saving}>
               <Save size={14} />
-              {saving ? "Saving..." : mode === "upload" ? "Attach & Save Invoice" : "Create Invoice"}
+              {saving
+                ? "Saving..."
+                : mode === "upload"
+                  ? "Attach & Save Invoice"
+                  : "Create Invoice"}
             </button>
           </div>
         </form>
       )}
 
-      {error && invoice ? <div className="form-message form-message--error">{error}</div> : null}
+      {error && invoice ? (
+        <div className="form-message form-message--error">{error}</div>
+      ) : null}
     </>
   );
 }

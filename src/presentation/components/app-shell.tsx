@@ -537,22 +537,6 @@ export function AppShell({ children }: { children: ReactNode }) {
               <Menu />
             </button>
 
-            {isDesktop ? (
-              <button
-                className={`sidebar-focus-toggle ${baseDesktopSidebarHidden ? "is-collapsed" : ""}`}
-                onClick={toggleDesktopSidebar}
-                aria-label={
-                  baseDesktopSidebarHidden ? "Show sidebar" : "Hide sidebar"
-                }
-                title={
-                  baseDesktopSidebarHidden ? "Show sidebar" : "Hide sidebar"
-                }
-                type="button"
-              >
-                <Menu />
-              </button>
-            ) : null}
-
             <strong>3Star Business Suite</strong>
           </div>
 
