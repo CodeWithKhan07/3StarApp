@@ -12,7 +12,8 @@
     "data:import": "node scripts/import-workbook.cjs",
     "desktop:dev": "concurrently -k \"next dev\" \"wait-on http://localhost:3000 && electron .\"",
     "desktop:build": "npm run build && electron-builder",
-    "desktop:pack": "npm run build && electron-builder --dir"
+    "desktop:pack": "npm run build && electron-builder --dir",
+    "dist": "next build && electron-builder --win"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",

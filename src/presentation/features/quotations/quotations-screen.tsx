@@ -147,6 +147,11 @@ export function QuotationsScreen() {
 
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [minAmount, setMinAmount] = useState("");
+  const [maxAmount, setMaxAmount] = useState("");
+  const [sortBy, setSortBy] = useState("newest");
 
   const [showForm, setShowForm] = useState(false);
   const [formError, setFormError] = useState("");
@@ -189,25 +194,66 @@ export function QuotationsScreen() {
 
   const filteredQuotations = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
+    const fromTime = dateFrom ? new Date(dateFrom).getTime() : null;
+    const toTime = dateTo ? new Date(dateTo).getTime() : null;
+    const minValue = minAmount.trim() ? Number(minAmount) : null;
+    const maxValue = maxAmount.trim() ? Number(maxAmount) : null;
 
-    return quotations.filter((quotation) => {
+    const result = quotations.filter((quotation) => {
+      const issueTime = quotation.issueDate
+        ? new Date(quotation.issueDate).getTime()
+        : 0;
       const target = [
         quotation.id,
+        quotation.serialNumber,
         quotation.companyName,
         quotation.store,
         quotation.scopeOfWork,
         quotation.status,
         quotation.remarks,
+        quotation.amount,
+        quotation.issueDate,
       ]
         .join(" ")
         .toLowerCase();
 
       const matchesQuery = !normalizedQuery || target.includes(normalizedQuery);
       const matchesStatus = status === "all" || quotation.status === status;
+      const matchesFrom = !fromTime || issueTime >= fromTime;
+      const matchesTo = !toTime || issueTime <= toTime;
+      const matchesMin = minValue === null || quotation.amount >= minValue;
+      const matchesMax = maxValue === null || quotation.amount <= maxValue;
 
-      return matchesQuery && matchesStatus;
+      return (
+        matchesQuery &&
+        matchesStatus &&
+        matchesFrom &&
+        matchesTo &&
+        matchesMin &&
+        matchesMax
+      );
     });
-  }, [quotations, query, status]);
+
+    return result.sort((a, b) => {
+      if (sortBy === "oldest") {
+        return new Date(a.issueDate || 0).getTime() - new Date(b.issueDate || 0).getTime();
+      }
+
+      if (sortBy === "price-high") {
+        return b.amount - a.amount;
+      }
+
+      if (sortBy === "price-low") {
+        return a.amount - b.amount;
+      }
+
+      if (sortBy === "company") {
+        return a.companyName.localeCompare(b.companyName);
+      }
+
+      return new Date(b.issueDate || 0).getTime() - new Date(a.issueDate || 0).getTime();
+    });
+  }, [quotations, query, status, dateFrom, dateTo, minAmount, maxAmount, sortBy]);
 
   const stats = useMemo(() => {
     const totalValue = quotations.reduce((sum, item) => sum + item.amount, 0);
@@ -225,6 +271,25 @@ export function QuotationsScreen() {
       { label: "Total Quote Value", value: money(totalValue) },
     ];
   }, [quotations]);
+
+  const groupedQuotations = useMemo(() => {
+    return Array.from(
+      filteredQuotations
+        .reduce((map, item) => {
+          const company = item.companyName?.trim() || "Unnamed Company";
+          const list = map.get(company) || [];
+          list.push(item);
+          map.set(company, list);
+          return map;
+        }, new Map<string, typeof filteredQuotations>())
+        .entries()
+    ).map(([company, items]) => ({
+      company,
+      items,
+      total: items.reduce((sum, item) => sum + item.amount, 0),
+      approved: items.filter((item) => item.status === "approved").length,
+    }));
+  }, [filteredQuotations]);
 
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -512,13 +577,13 @@ export function QuotationsScreen() {
         ))}
       </section>
 
-      <section className="card table-toolbar projects-toolbar">
-        <label className="toolbar-search">
+      <section className="card quotation-filter-panel">
+        <label className="toolbar-search quotation-search">
           <Search size={17} />
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search quotation, company, scope..."
+            placeholder="Search quotation, company, serial no, branch, scope, amount..."
           />
         </label>
 
@@ -527,27 +592,71 @@ export function QuotationsScreen() {
           value={status}
           onChange={(event) => setStatus(event.target.value)}
         >
-          <option value="all">All Status</option>
+          <option value="all">All Statuses</option>
           {statusOptions.map((item) => (
             <option key={item.value} value={item.value}>
               {item.label}
             </option>
           ))}
         </select>
+
+        <label className="compact-filter-field">
+          <span>From date</span>
+          <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+        </label>
+
+        <label className="compact-filter-field">
+          <span>To date</span>
+          <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+        </label>
+
+        <label className="compact-filter-field">
+          <span>Min price</span>
+          <input inputMode="decimal" value={minAmount} onChange={(event) => setMinAmount(event.target.value)} placeholder="0" />
+        </label>
+
+        <label className="compact-filter-field">
+          <span>Max price</span>
+          <input inputMode="decimal" value={maxAmount} onChange={(event) => setMaxAmount(event.target.value)} placeholder="Any" />
+        </label>
+
+        <select className="select" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+          <option value="newest">Newest first</option>
+          <option value="oldest">Oldest first</option>
+          <option value="price-high">Price high to low</option>
+          <option value="price-low">Price low to high</option>
+          <option value="company">Company A-Z</option>
+        </select>
+
+        <button
+          className="button quotation-clear-filters"
+          type="button"
+          onClick={() => {
+            setQuery("");
+            setStatus("all");
+            setDateFrom("");
+            setDateTo("");
+            setMinAmount("");
+            setMaxAmount("");
+            setSortBy("newest");
+          }}
+        >
+          Clear filters
+        </button>
       </section>
 
-      <section className="card projects-table-card">
+      <section className="card projects-table-card quotations-company-workspace">
         <div className="projects-table-header">
           <div>
             <h2>Quotation Tracker</h2>
             <p>
-              Showing {filteredQuotations.length} of {quotations.length} quotations.
+              Showing {filteredQuotations.length} of {quotations.length} quotations. Grouped by company/customer with job history and reachable actions.
             </p>
           </div>
         </div>
 
-        <div className="table-wrap projects-table-wrap">
-          <table className="data-table projects-table">
+        <div className="table-wrap projects-table-wrap desktop-data-table">
+          <table className="data-table projects-table quotations-table">
             <thead>
               <tr>
                 <th>Quotation No</th>
@@ -775,6 +884,119 @@ export function QuotationsScreen() {
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="mobile-card-list mobile-company-list">
+          {groupedQuotations.length ? (
+            groupedQuotations.map((group) => (
+              <section className="mobile-company-card" key={group.company}>
+                <header>
+                  <span>Customer / Company History</span>
+                  <h3>{group.company}</h3>
+                  <small>
+                    {group.items.length} quotation(s) · {group.approved} approved · Total {money(group.total)}
+                  </small>
+                </header>
+
+                <div className="mobile-company-card__records">
+                  {group.items.map((quotation) => {
+                    const hasInvoice = data.invoices.some(
+                      (invoice) =>
+                        invoice.quotationSerialNumber === quotation.serialNumber ||
+                        (!invoice.quotationSerialNumber && invoice.quotationNo === quotation.id)
+                    );
+
+                    return (
+                      <article className="mobile-record-card" key={quotation.id}>
+                        <header>
+                          <div>
+                            <span>Quotation / Job</span>
+                            <strong>{quotation.serialNumber}</strong>
+                            <small>{quotation.id} · {quotation.issueDate || "No date"} · {quotation.store || "No branch"}</small>
+                          </div>
+                          <StatusBadge value={quotation.status} />
+                        </header>
+
+                        <dl>
+                          <div className="mobile-field-wide">
+                            <dt>Job / Scope</dt>
+                            <dd>{quotation.scopeOfWork || "—"}</dd>
+                          </div>
+                          <div>
+                            <dt>Quotation No</dt>
+                            <dd>{quotation.id}</dd>
+                          </div>
+                          <div>
+                            <dt>Amount</dt>
+                            <dd>{money(quotation.amount)}</dd>
+                          </div>
+                          <div>
+                            <dt>Follow-up</dt>
+                            <dd>{quotation.followUpDate || "—"}</dd>
+                          </div>
+                          <div>
+                            <dt>Invoice</dt>
+                            <dd>{hasInvoice ? "Created" : "Not created"}</dd>
+                          </div>
+                        </dl>
+
+                        <div className="mobile-card-status">
+                          <span>Status</span>
+                          <select
+                            className="inline-select mobile-status-select"
+                            value={quotation.status}
+                            onChange={(event) => void handleStatusChange(quotation, event.target.value)}
+                          >
+                            {statusOptions.map((item) => (
+                              <option key={item.value} value={item.value}>{item.label}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <footer>
+                          <Link
+                            className="button button--primary"
+                            href={`${routes.quotationInvoice}?serial=${encodeURIComponent(quotation.serialNumber)}`}
+                          >
+                            <FileUp size={14} />
+                            {hasInvoice ? "View / Edit Invoice" : "Create / Upload Invoice"}
+                          </Link>
+
+                          <button
+                            className="button"
+                            type="button"
+                            onClick={() => void handleExport(quotation)}
+                          >
+                            <Download size={14} />
+                            Download Quotation
+                          </button>
+
+                          <Link
+                            className="button"
+                            href={`${routes.editQuotation}?id=${encodeURIComponent(quotation.id)}`}
+                          >
+                            <Edit3 size={14} />
+                            Edit Quotation
+                          </Link>
+
+                          <button
+                            className="button button--danger"
+                            type="button"
+                            onClick={() => void handleDelete(quotation)}
+                          >
+                            <Trash2 size={14} />
+                            Delete Quotation
+                          </button>
+                        </footer>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            ))
+          ) : (
+            <div className="mobile-empty-state">No quotations found.</div>
+          )}
         </div>
       </section>
 
