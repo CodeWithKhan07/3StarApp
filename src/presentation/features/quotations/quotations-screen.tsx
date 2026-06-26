@@ -1,29 +1,29 @@
 "use client";
 
-import {
-  parseQuotationDocument,
-  type QuotationImportDraft,
-} from "@/application/services/quotation-import";
+import { exportQuotationPdf } from "@/application/services/document-export";
 import {
   parseInvoiceDocument,
   type InvoiceImportDraft,
 } from "@/application/services/invoice-import";
-import { exportQuotationPdf } from "@/application/services/document-export";
+import {
+  parseQuotationDocument,
+  type QuotationImportDraft,
+} from "@/application/services/quotation-import";
 import type { BusinessDataSet } from "@/domain/entities/business";
-import { routes } from "@/lib/routes";
 import {
   createNextQuotationId,
   createQuotationSerial,
   ensureQuotationSerial,
 } from "@/lib/record-ids";
+import { routes } from "@/lib/routes";
 import {
   EmptyTableRow,
   PageHeader,
   StatusBadge,
 } from "@/presentation/components/ui";
 import { money } from "@/presentation/data/sample-data";
-import { useBusinessData } from "@/presentation/providers/business-data-provider";
 import { InvoiceDocumentModal } from "@/presentation/features/invoices/invoice-document-modal";
+import { useBusinessData } from "@/presentation/providers/business-data-provider";
 import {
   Check,
   Download,
@@ -35,11 +35,20 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useMemo, useRef, useState, type FormEvent } from "react";
 import Link from "next/link";
+import { useMemo, useRef, useState, type FormEvent } from "react";
 
 type Quotation = BusinessDataSet["quotations"][number];
 type QuotationLineItem = NonNullable<Quotation["lineItems"]>[number];
+type QuotationLineItemDraft = Omit<
+  QuotationLineItem,
+  "quantity" | "sqm" | "unitPrice" | "vatRate"
+> & {
+  quantity: string;
+  sqm?: string;
+  unitPrice: string;
+  vatRate: string;
+};
 
 type QuotationStatus = "draft" | "sent" | "approved" | "rejected" | "expired";
 
@@ -55,9 +64,74 @@ function today() {
   return new Date().toISOString().slice(0, 10);
 }
 
-function toNumber(value: string) {
-  const parsed = Number(value);
+function toNumber(value: string | number | null | undefined) {
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : 0;
+  }
+
+  const text = String(value ?? "").trim();
+  if (!text || text === ".") return 0;
+
+  const parsed = Number(text);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function normalizeDecimalInput(value: string) {
+  const normalized = value.replace(/,/g, ".").replace(/[^0-9.]/g, "");
+  const [integerPart = "", ...decimalParts] = normalized.split(".");
+  const decimalPart = decimalParts.join("");
+  const integerWithoutLeadingZero = integerPart.replace(/^0+(?=\d)/, "");
+
+  if (decimalParts.length > 0) {
+    return `${integerWithoutLeadingZero || "0"}.${decimalPart}`;
+  }
+
+  return integerWithoutLeadingZero;
+}
+
+function numberToInputText(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed !== 0 ? String(value) : "";
+}
+
+function moneyOrEmpty(value: number) {
+  return value > 0 ? money(value) : "";
+}
+
+function emptyLineItem(serialNo: number): QuotationLineItemDraft {
+  return {
+    serialNo,
+    description: "",
+    quantity: "",
+    sqm: "",
+    unitPrice: "",
+    amount: 0,
+    vatRate: "",
+    vatAmount: 0,
+  };
+}
+
+function lineItemToDraft(
+  item: Partial<QuotationLineItem>,
+  serialNo: number,
+  fallbackVatRate = 0
+): QuotationLineItemDraft {
+  const quantity = numberToInputText(item.quantity);
+  const unitPrice = numberToInputText(item.unitPrice);
+  const vatRate = numberToInputText(item.vatRate ?? fallbackVatRate);
+  const amount = toNumber(quantity) * toNumber(unitPrice);
+  const vatAmount = (amount * toNumber(vatRate)) / 100;
+
+  return {
+    serialNo,
+    description: item.description ?? "",
+    quantity,
+    sqm: numberToInputText(item.sqm),
+    unitPrice,
+    amount,
+    vatRate,
+    vatAmount,
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -162,8 +236,8 @@ export function QuotationsScreen() {
   const [importing, setImporting] = useState(false);
   const [importDraft, setImportDraft] = useState<QuotationImportDraft | null>(null);
   const [showSqm, setShowSqm] = useState(false);
-  const [lineItems, setLineItems] = useState<QuotationLineItem[]>([
-    { serialNo: 1, description: "", quantity: 1, sqm: 0, unitPrice: 0, amount: 0, vatRate: data.company.vatRate, vatAmount: 0 },
+  const [lineItems, setLineItems] = useState<QuotationLineItemDraft[]>([
+    emptyLineItem(1),
   ]);
   const [invoiceImportDraft, setInvoiceImportDraft] = useState<InvoiceImportDraft | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -176,14 +250,22 @@ export function QuotationsScreen() {
     return { subTotal, vatAmount, total: subTotal + vatAmount };
   }, [lineItems]);
 
-  function updateLineItem(index: number, patch: Partial<QuotationLineItem>) {
-    setLineItems((current) => current.map((item, itemIndex) => {
-      if (itemIndex !== index) return item;
-      const next = { ...item, ...patch };
-      next.amount = next.quantity * next.unitPrice;
-      next.vatAmount = next.amount * next.vatRate / 100;
-      return next;
-    }));
+  function updateLineItem(index: number, patch: Partial<QuotationLineItemDraft>) {
+    setLineItems((current) =>
+      current.map((item, itemIndex) => {
+        if (itemIndex !== index) return item;
+
+        const next = { ...item, ...patch };
+        const quantity = toNumber(next.quantity);
+        const unitPrice = toNumber(next.unitPrice);
+        const vatRate = toNumber(next.vatRate);
+
+        next.amount = quantity * unitPrice;
+        next.vatAmount = (next.amount * vatRate) / 100;
+
+        return next;
+      })
+    );
   }
 
   const quotations = useMemo(() => {
@@ -313,15 +395,30 @@ export function QuotationsScreen() {
     const validLineItems = lineItems.filter(
       (item) =>
         item.description.trim() &&
-        Number(item.quantity) > 0 &&
-        Number(item.unitPrice) > 0,
+        toNumber(item.quantity) > 0 &&
+        toNumber(item.unitPrice) > 0
     );
-    const savedLineItems = validLineItems.map((item, index) => ({
-      ...item,
-      serialNo: index + 1,
-      description: item.description.trim(),
-      sqm: showSqm ? Number(item.sqm) || 0 : undefined,
-    }));
+    const savedLineItems: QuotationLineItem[] = validLineItems.map(
+      (item, index) => {
+        const quantity = toNumber(item.quantity);
+        const unitPrice = toNumber(item.unitPrice);
+        const vatRate = toNumber(item.vatRate);
+        const amount = quantity * unitPrice;
+        const vatAmount = (amount * vatRate) / 100;
+
+        return {
+          ...item,
+          serialNo: index + 1,
+          description: item.description.trim(),
+          quantity,
+          sqm: showSqm ? toNumber(item.sqm) : undefined,
+          unitPrice,
+          amount,
+          vatRate,
+          vatAmount,
+        };
+      }
+    );
     const subTotal = savedLineItems.reduce((sum, item) => sum + item.amount, 0);
     const vatAmount = savedLineItems.reduce((sum, item) => sum + item.vatAmount, 0);
 
@@ -367,6 +464,7 @@ export function QuotationsScreen() {
       await createQuotation(quotation);
       setShowForm(false);
       setImportDraft(null);
+      setLineItems([emptyLineItem(1)]);
       formElement.reset();
     } catch (caughtError) {
       setFormError(
@@ -386,13 +484,28 @@ export function QuotationsScreen() {
 
     try {
       const parsed = await parseQuotationDocument(file);
-      const importedLines = (parsed.lineItems.length ? parsed.lineItems : [{ serialNo: 1, description: parsed.scopeOfWork, quantity: 1, unitPrice: parsed.subTotal, amount: parsed.subTotal }]).map((item, index) => ({
-        ...item,
-        serialNo: index + 1,
-        vatRate: parsed.vatRate,
-        vatAmount: item.amount * parsed.vatRate / 100,
-        sqm: 0,
-      }));
+      const sourceLines: Array<Partial<QuotationLineItem>> = (
+        parsed.lineItems.length
+          ? parsed.lineItems
+          : [
+              {
+                serialNo: 1,
+                description: parsed.scopeOfWork,
+                quantity: 1,
+                unitPrice: parsed.subTotal,
+                amount: parsed.subTotal,
+                vatRate: parsed.vatRate,
+                vatAmount: (parsed.subTotal * parsed.vatRate) / 100,
+              },
+            ]
+      );
+      const importedLines = sourceLines.map((item, index) =>
+        lineItemToDraft(
+          { ...item, vatRate: item.vatRate ?? parsed.vatRate, sqm: item.sqm ?? 0 },
+          index + 1,
+          parsed.vatRate
+        )
+      );
       setLineItems(importedLines);
       setShowSqm(false);
       setImportDraft(parsed);
@@ -468,7 +581,7 @@ export function QuotationsScreen() {
               onClick={() => {
                 setImportDraft(null);
                 setShowSqm(false);
-                setLineItems([{ serialNo: 1, description: "", quantity: 1, sqm: 0, unitPrice: 0, amount: 0, vatRate: data.company.vatRate, vatAmount: 0 }]);
+                setLineItems([emptyLineItem(1)]);
                 setFormError("");
                 setShowForm((value) => !value);
               }}
@@ -535,7 +648,14 @@ export function QuotationsScreen() {
 
             <label className="field">
               <span>Amount (SAR)</span>
-              <input name="amount" type="number" min="0" step="0.01" value={quotationTotals.total.toFixed(2)} readOnly />
+              <input
+                name="amount"
+                type="text"
+                inputMode="decimal"
+                value={quotationTotals.total > 0 ? quotationTotals.total.toFixed(2) : ""}
+                placeholder="Auto calculated"
+                readOnly
+              />
             </label>
 
             <label className="field"><span>Currency</span><input name="currency" defaultValue={importDraft?.currency || data.company.currency || "SAR"} required /></label>
@@ -556,16 +676,16 @@ export function QuotationsScreen() {
               <tbody>{lineItems.map((item, index) => <tr key={index}>
                 <td>{index + 1}</td>
                 <td><textarea className="inline-input inline-input--wide" value={item.description} required onChange={(event) => updateLineItem(index, { description: event.target.value })} /></td>
-                <td><input className="inline-input" type="number" min="0.01" step="0.01" value={item.quantity} required onChange={(event) => updateLineItem(index, { quantity: toNumber(event.target.value) })} /></td>
-                {showSqm ? <td><input className="inline-input" type="number" min="0" step="0.01" value={item.sqm ?? 0} onChange={(event) => updateLineItem(index, { sqm: toNumber(event.target.value) })} /></td> : null}
-                <td><input className="inline-input" type="number" min="0.01" step="0.01" value={item.unitPrice} required onChange={(event) => updateLineItem(index, { unitPrice: toNumber(event.target.value) })} /></td>
-                <td><input className="inline-input" type="number" min="0" max="100" step="0.01" value={item.vatRate} required onChange={(event) => updateLineItem(index, { vatRate: toNumber(event.target.value) })} /></td>
-                <td>{money(item.vatAmount)}</td><td>{money(item.amount + item.vatAmount)}</td>
+                <td><input className="inline-input" type="text" inputMode="decimal" value={item.quantity} placeholder="Qty" required onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateLineItem(index, { quantity: normalizeDecimalInput(event.target.value) })} /></td>
+                {showSqm ? <td><input className="inline-input" type="text" inputMode="decimal" value={item.sqm ?? ""} placeholder="SQM" onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateLineItem(index, { sqm: normalizeDecimalInput(event.target.value) })} /></td> : null}
+                <td><input className="inline-input" type="text" inputMode="decimal" value={item.unitPrice} placeholder="Unit price" required onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateLineItem(index, { unitPrice: normalizeDecimalInput(event.target.value) })} /></td>
+                <td><input className="inline-input" type="text" inputMode="decimal" value={item.vatRate} placeholder="VAT %" required onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateLineItem(index, { vatRate: normalizeDecimalInput(event.target.value) })} /></td>
+                <td>{moneyOrEmpty(item.vatAmount)}</td><td>{moneyOrEmpty(item.amount + item.vatAmount)}</td>
                 <td><button className="icon-button icon-button--danger" type="button" disabled={lineItems.length === 1} onClick={() => setLineItems((items) => items.filter((_, itemIndex) => itemIndex !== index).map((entry, itemIndex) => ({ ...entry, serialNo: itemIndex + 1 })))}><Trash2 size={15} /></button></td>
               </tr>)}</tbody>
             </table>
           </div>
-          <div className="form-actions"><span>Subtotal: {money(quotationTotals.subTotal)} · VAT: {money(quotationTotals.vatAmount)}</span><button className="button" type="button" onClick={() => setLineItems((items) => [...items, { serialNo: items.length + 1, description: "", quantity: 1, sqm: 0, unitPrice: 0, amount: 0, vatRate: data.company.vatRate, vatAmount: 0 }])}><Plus size={14} />Add Item</button></div>
+          <div className="form-actions"><span>Subtotal: {moneyOrEmpty(quotationTotals.subTotal) || "—"} · VAT: {moneyOrEmpty(quotationTotals.vatAmount) || "—"}</span><button className="button" type="button" onClick={() => setLineItems((items) => [...items, emptyLineItem(items.length + 1)])}><Plus size={14} />Add Item</button></div>
 
           {formError ? (
             <div className="form-message form-message--error">{formError}</div>
@@ -629,12 +749,12 @@ export function QuotationsScreen() {
 
         <label className="compact-filter-field">
           <span>Min price</span>
-          <input inputMode="decimal" value={minAmount} onChange={(event) => setMinAmount(event.target.value)} placeholder="0" />
+          <input inputMode="decimal" value={minAmount} onChange={(event) => setMinAmount(normalizeDecimalInput(event.target.value))} placeholder="Min" />
         </label>
 
         <label className="compact-filter-field">
           <span>Max price</span>
-          <input inputMode="decimal" value={maxAmount} onChange={(event) => setMaxAmount(event.target.value)} placeholder="Any" />
+          <input inputMode="decimal" value={maxAmount} onChange={(event) => setMaxAmount(normalizeDecimalInput(event.target.value))} placeholder="Any" />
         </label>
 
         <select className="select" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
@@ -743,10 +863,15 @@ export function QuotationsScreen() {
                         {isEditing ? (
                           <input
                             className="inline-input"
-                            type="number"
-                            value={draft.amount}
+                            type="text"
+                            inputMode="decimal"
+                            value={numberToInputText(draft.amount)}
+                            onFocus={(event) => event.currentTarget.select()}
                             onChange={(event) =>
-                              updateDraft("amount", Number(event.target.value || 0))
+                              updateDraft(
+                                "amount",
+                                toNumber(normalizeDecimalInput(event.target.value))
+                              )
                             }
                           />
                         ) : (
