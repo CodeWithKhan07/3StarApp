@@ -98,7 +98,10 @@ function moneyOrEmpty(value: number) {
   return value > 0 ? money(value) : "";
 }
 
-function emptyLineItem(serialNo: number): QuotationLineItemDraft {
+function emptyLineItem(
+  serialNo: number,
+  defaultVatRate = 15
+): QuotationLineItemDraft {
   return {
     serialNo,
     description: "",
@@ -106,7 +109,7 @@ function emptyLineItem(serialNo: number): QuotationLineItemDraft {
     sqm: "",
     unitPrice: "",
     amount: 0,
-    vatRate: "",
+    vatRate: numberToInputText(defaultVatRate),
     vatAmount: 0,
   };
 }
@@ -237,7 +240,7 @@ export function QuotationsScreen() {
   const [importDraft, setImportDraft] = useState<QuotationImportDraft | null>(null);
   const [showSqm, setShowSqm] = useState(false);
   const [lineItems, setLineItems] = useState<QuotationLineItemDraft[]>([
-    emptyLineItem(1),
+    emptyLineItem(1, data.company.vatRate),
   ]);
   const [invoiceImportDraft, setInvoiceImportDraft] = useState<InvoiceImportDraft | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -464,7 +467,7 @@ export function QuotationsScreen() {
       await createQuotation(quotation);
       setShowForm(false);
       setImportDraft(null);
-      setLineItems([emptyLineItem(1)]);
+      setLineItems([emptyLineItem(1, data.company.vatRate)]);
       formElement.reset();
     } catch (caughtError) {
       setFormError(
@@ -581,7 +584,7 @@ export function QuotationsScreen() {
               onClick={() => {
                 setImportDraft(null);
                 setShowSqm(false);
-                setLineItems([emptyLineItem(1)]);
+                setLineItems([emptyLineItem(1, data.company.vatRate)]);
                 setFormError("");
                 setShowForm((value) => !value);
               }}
@@ -685,7 +688,7 @@ export function QuotationsScreen() {
               </tr>)}</tbody>
             </table>
           </div>
-          <div className="form-actions"><span>Subtotal: {moneyOrEmpty(quotationTotals.subTotal) || "—"} · VAT: {moneyOrEmpty(quotationTotals.vatAmount) || "—"}</span><button className="button" type="button" onClick={() => setLineItems((items) => [...items, emptyLineItem(items.length + 1)])}><Plus size={14} />Add Item</button></div>
+          <div className="form-actions"><span>Subtotal: {moneyOrEmpty(quotationTotals.subTotal) || "—"} · VAT: {moneyOrEmpty(quotationTotals.vatAmount) || "—"}</span><button className="button" type="button" onClick={() => setLineItems((items) => [...items, emptyLineItem(items.length + 1, data.company.vatRate)])}><Plus size={14} />Add Item</button></div>
 
           {formError ? (
             <div className="form-message form-message--error">{formError}</div>
