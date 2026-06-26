@@ -1,6 +1,7 @@
 "use client";
 
 import quotationLogo from "../../../assets/quotationlogo.png";
+import quotationStaticQr from "../../../assets/quotation-static-qr.jpeg";
 import type {
   Client,
   CompanyProfile,
@@ -190,6 +191,13 @@ export async function exportQuotationPdf(
 ) {
   const popup = openPrintDocument(`Quotation ${quotation.id}`);
   try {
+    const profile = company as CompanyProfile & {
+      email?: string;
+      website?: string;
+    };
+    const quoteDate = quotation.issueDate
+      ? quotation.issueDate.split("-").reverse().join("-")
+      : "";
     const currency = quotation.currency || company.currency || "SAR";
     const baseRate = quotation.vatRate ?? company.vatRate;
     const subtotal =
@@ -209,33 +217,41 @@ export async function exportQuotationPdf(
       : [
           {
             serialNo: 1,
-            description: quotation.scopeOfWork,
+            description: quotation.scopeOfWork || "",
             quantity: 1,
+            sqm: 0,
             unitPrice: subtotal,
             amount: subtotal,
             vatRate: baseRate,
             vatAmount: vat,
           },
         ];
+    const showSqm = Boolean(quotation.showSqm);
     const rows = lines
       .map((item, index) => {
-        const itemVat = item.vatAmount ?? (item.amount * item.vatRate) / 100;
-        return `<tr><td>${index + 1}</td><td>${escapeHtml(item.description)}</td><td class="num">${amount(item.quantity)}</td><td class="num">${amount(item.unitPrice)}</td><td class="num">${amount(item.vatRate)}%</td><td class="num">${amount(itemVat)}</td><td class="num">${amount(item.amount + itemVat)}</td></tr>`;
+        const sqmCell = showSqm
+          ? `<td class="c-sqm">${amount(item.sqm ?? 0).replace(/\.00$/, "")}</td>`
+          : "";
+        return `<tr><td class="c-serial">${index + 1}</td><td class="c-desc">${escapeHtml(item.description)}</td><td class="c-qty">${amount(item.quantity).replace(/\.00$/, "")}</td>${sqmCell}<td class="c-price">${amount(item.unitPrice)}</td><td class="c-amount">${amount(item.amount)}</td></tr>`;
       })
       .join("");
-    const infoQr = await QRCode.toDataURL(
-      `Quotation ${quotation.id}\n${company.businessName}\n${company.phone}\n${quotation.companyName}\n${currency} ${amount(quotation.amount)}`,
-      { margin: 1, width: 220 },
-    );
+    const sqmHeader = showSqm ? `<th class="c-sqm">SQM</th>` : "";
+    const sqmTableClass = showSqm ? " items--sqm" : "";
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Quotation ${escapeHtml(quotation.id)}</title><style>${sharedCss}
-      .quote-position{padding:18mm 0 0 18mm}.quote{width:115mm;border-top:2mm solid #c59819;font-size:6.5pt}.head{height:24mm;display:grid;place-items:center;background:linear-gradient(90deg,#eee 14%,#fff 14% 84%,#eee 84%)}.logo{width:25mm;height:22mm}.black{background:#1e1e1e;color:#fff;text-align:center}.company{font-size:8pt;font-weight:700;padding:3mm}.goldline{border-bottom:1.2mm solid #c59819}.contact{display:grid;grid-template-columns:1fr 1fr;background:#fbf8ef}.contact div{padding:1.6mm;border-right:1px solid #999}.banner{padding:4mm;color:#d1a51d;font-size:15pt;font-weight:700;letter-spacing:5px}.details-title{padding:1.2mm}.details{display:grid;grid-template-columns:63% 37%;border-bottom:1mm solid #c59819}.details table td{padding:1.6mm;border:1px solid #aaa}.details table td:first-child{width:28%;background:#4a4a4a;color:#fff;text-align:center;font-weight:700}.details .qrbox{display:grid;place-items:center}.qr{width:24mm;height:24mm}.items{font-size:6.2pt}.items th{padding:2mm 1mm;color:#d1a51d}.items td{padding:2mm 1mm}.items tbody tr:nth-child(even){background:#f7f2e7}.totals{margin-left:auto;width:58%;font-size:7pt}.totals div{display:flex;justify-content:space-between;padding:1.4mm}.grand{background:#1e1e1e;color:#d1a51d;font-weight:700;font-size:8pt}.grand b{background:#d1a51d;color:#111;margin:-1.4mm;padding:1.4mm 2mm}.terms{margin-top:1mm}.terms h3{margin:0;padding:2mm;text-align:left;color:#d1a51d}.terms p{font-size:5pt;line-height:1.5;padding:0 3mm}.footer{padding:3mm 2mm;margin-top:2mm;font-size:5pt}</style></head><body><main class="page quote-position"><section class="quote">
-      <div class="head"><img class="logo" src="${quotationLogo.src}" alt="3 Stars"></div><div class="black company">${escapeHtml(company.businessName || company.legalCompanyName)}</div><div class="black goldline">Automatic Door & Maintenance Works</div>
-      <div class="contact goldline"><div><b>CR No.:</b> ${escapeHtml(company.crNumber)}</div><div><b>VAT No.:</b> ${escapeHtml(company.vatNumber)}</div><div><b>City:</b> ${escapeHtml(company.city)}, ${escapeHtml(company.country)}</div><div><b>WhatsApp:</b> ${escapeHtml(company.phone)}</div></div>
-      <div class="black banner goldline">◆ QUOTATION ◆</div><div class="black details-title">QUOTATION DETAILS</div><div class="details"><table><tbody><tr><td>Date</td><td>${displayDate(quotation.issueDate)}</td></tr><tr><td>Quotation No.</td><td>${escapeHtml(quotation.id)}</td></tr><tr><td>Client Name</td><td>${escapeHtml(quotation.companyName)}</td></tr><tr><td>Client VAT</td><td>${escapeHtml(quotation.customerVatNumber || "—")}</td></tr><tr><td>Store Name</td><td>${escapeHtml(quotation.store || "—")}</td></tr></tbody></table><div class="qrbox"><img class="qr" src="${infoQr}" alt="Quotation QR"></div></div>
-      <table class="items"><thead class="black"><tr><th>#</th><th>Description of Work / Item</th><th>Qty</th><th>Unit Price</th><th>VAT %</th><th>VAT</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table>
-      <div class="totals"><div><b>Sub-Total:</b><span>${amount(subtotal)} ${escapeHtml(currency)}</span></div><div><b>VAT:</b><span>${amount(vat)} ${escapeHtml(currency)}</span></div><div class="grand"><span>★ TOTAL AMOUNT (Including VAT)</span><b>${amount(quotation.amount)} ${escapeHtml(currency)}</b></div></div>
-      <div class="terms"><h3 class="black">▣ TERMS & CONDITIONS</h3><p>${escapeHtml(quotation.termsAndConditions || "This quotation is valid until the stated validity date. Prices include VAT where shown. Work will commence upon receipt of written purchase order.").replaceAll("\n", "<br>")}</p></div><div class="black footer">${escapeHtml(company.businessName)} — ${escapeHtml(company.city)}, ${escapeHtml(company.country)} &nbsp; | &nbsp; ${escapeHtml(company.phone)}</div>
-    </section></main></body></html>`;
+      body{background:#fff}.quote-page{position:relative;width:210mm;height:297mm;padding:12.35mm 13.75mm 10mm;font-family:Arial,Helvetica,sans-serif;color:#252525;overflow:hidden}.quote{width:171.8mm;margin:0 auto}.quote-head{height:37mm;display:flex;align-items:center;justify-content:center;background:#fff}.quote-logo{width:36mm;height:36mm;object-fit:contain}.band{background:#1d1d1d;color:#fff;text-align:center}.company-band{padding:2.7mm 2mm 1.55mm;font-size:16pt;line-height:1.05;font-weight:400}.legal-band{background:#414141;color:#caa740;padding:1.55mm 2mm 1.45mm;font-size:11.5pt;line-height:1}.contact-grid{display:grid;grid-template-columns:1fr 1fr;background:#fbf4e0;border-bottom:1.55mm solid #bd961e;color:#2b2b2b;font-size:10.4pt;line-height:1}.contact-grid div{height:5.15mm;padding:1.05mm 0 0;border-bottom:.25mm solid #c9c9c9}.contact-grid div:nth-child(odd){text-align:left}.contact-grid div:nth-child(even){text-align:left;padding-left:31mm}.title-band{border-bottom:1.45mm solid #bd961e;padding:3.9mm 0 3.1mm;color:#caa740;font-size:18pt;letter-spacing:8px;font-weight:400;line-height:1}.details-title{height:7mm;padding:2.15mm 0 0;font-size:10.6pt;letter-spacing:.2px;line-height:1}.details{display:grid;grid-template-columns:111.5mm 60.3mm;border-bottom:1.5mm solid #bd961e}.detail-table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:10.35pt}.detail-table td{height:6.8mm;border:.3mm solid #d0d0d0;padding:0 1.7mm;text-align:center;vertical-align:middle;line-height:1.05}.detail-table td:first-child{width:34mm;background:#505050;color:#fff;text-align:center;font-size:9.4pt;line-height:1;white-space:nowrap;overflow:visible}.qrbox{display:flex;align-items:center;justify-content:center}.qr-crop{width:28.7mm;height:28.7mm;overflow:hidden;background:#fff}.qr-crop img{display:block;width:34mm;height:34.7mm;margin:-3.1mm 0 0 -2.65mm;object-fit:cover}.items{width:100%;border-collapse:collapse;table-layout:fixed;font-size:10pt}.items th{background:#232323;color:#caa740;font-weight:400;border:.3mm solid #a7a7a7;border-top:0;padding:2mm 1.2mm;line-height:1.18}.items td{border:.3mm solid #d0d0d0;padding:2.2mm 1.2mm;text-align:center;vertical-align:middle;line-height:1.32}.items tbody tr:nth-child(even){background:#fbf8ef}.items .c-serial{width:22mm}.items .c-desc{width:87mm}.items.items--sqm .c-desc{width:71mm}.items td.c-desc{text-align:center}.items .c-qty{width:14mm}.items .c-sqm{width:16mm}.items .c-price{width:21mm}.items .c-amount{width:27.8mm}.totals{display:grid;grid-template-columns:1fr 28.1mm;background:#fbf4e0;margin-left:0;font-size:10.4pt}.total-row{display:contents}.total-label,.total-value{border:.3mm solid #d0d0d0;padding:1.8mm 2mm;text-align:right}.total-value{text-align:center;background:#fff}.grand-label{background:#1d1d1d;color:#caa740;font-size:12pt}.grand-value{background:#caa740;color:#111;font-size:12pt}.footer-main{margin-top:3.5mm;padding:2.4mm 2mm;background:#1d1d1d;color:#fff;text-align:center;font-size:10.1pt}.footer-contact{display:flex;align-items:center;justify-content:center;gap:3mm;background:#fbf4e0;padding:2mm 2mm 1.8mm;font-size:8.5pt}.footer-special{padding-top:2.3mm;text-align:center;color:#555;font-size:7.6pt}.print-foot{position:absolute;left:12mm;right:12mm;bottom:8mm;display:grid;grid-template-columns:1fr 1fr 1fr;font-size:7.5pt}.print-foot span:nth-child(2){text-align:center}.print-foot span:nth-child(3){text-align:right}@media print{.quote-page{padding:12.35mm 13.75mm 10mm}.page{break-after:auto}}</style></head><body><main class="page quote-page"><section class="quote">
+      <div class="quote-head"><img class="quote-logo" src="${quotationLogo.src}" alt="3 Stars"></div>
+      <div class="band company-band">${escapeHtml(company.businessName || "3 Star Automatic Door & Maintenance Works")}</div>
+      <div class="legal-band band">${escapeHtml(company.legalCompanyName || "")}</div>
+      <div class="contact-grid"><div>CR No.: ${escapeHtml(company.crNumber)}</div><div>VAT No.: ${escapeHtml(company.vatNumber)}</div><div>City: ${escapeHtml(company.city)}, ${escapeHtml(company.country)}</div><div>WhatsApp: ${escapeHtml(company.phone)}</div></div>
+      <div class="band title-band">◆ QUOTATION ◆</div>
+      <div class="band details-title">QUOTATION DETAILS</div>
+      <div class="details"><table class="detail-table"><tbody><tr><td>Date</td><td>${escapeHtml(quoteDate)}</td></tr><tr><td>Quotation No.</td><td>${escapeHtml(quotation.id)}</td></tr><tr><td>Company Name</td><td>${escapeHtml(quotation.companyName)}</td></tr><tr><td>Store Name</td><td>${escapeHtml(quotation.store || "")}</td></tr></tbody></table><div class="qrbox"><div class="qr-crop"><img src="${quotationStaticQr.src}" alt="Quotation QR"></div></div></div>
+      <table class="items${sqmTableClass}"><thead><tr><th class="c-serial">Sr. No.</th><th class="c-desc">Description of Work / Item</th><th class="c-qty">QTY</th>${sqmHeader}<th class="c-price">Unit Price (${escapeHtml(currency)})</th><th class="c-amount">Amount (${escapeHtml(currency)})</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="totals"><div class="total-row"><div class="total-label">Sub-Total :</div><div class="total-value">${amount(subtotal)} ${escapeHtml(currency)}</div></div><div class="total-row"><div class="total-label">VAT (${amount(baseRate).replace(/\.00$/, "")}%) :</div><div class="total-value">${amount(vat)} ${escapeHtml(currency)}</div></div><div class="total-row"><div class="total-label grand-label">★TOTAL AMOUNT (Including VAT ${amount(baseRate).replace(/\.00$/, "")}%) :</div><div class="total-value grand-value">${amount(quotation.amount)} ${escapeHtml(currency)}</div></div></div>
+      <div class="footer-main">${escapeHtml(company.businessName || "3 Star Automatic Door & Maintenance Works")} — ${escapeHtml(company.city)}, ${escapeHtml(company.country)}</div>
+      <div class="footer-contact"><span>Mobile: ${escapeHtml(company.phone)}</span><span>|</span><span>Email: ${escapeHtml(profile.email || "Ksajjad324@gmail.com")}</span><span>|</span><span>${escapeHtml(profile.website || "https://3starmaintenance.base44.app/")}</span></div>
+      <div class="footer-special">Specialized in: Automatic Doors · Rolling Shutters · Glass Works · Signage · Cladding · Painting · Civil Works · AMC Services</div>
+    </section><footer class="print-foot"><span>${escapeHtml(company.businessName || "3 Star Automatic Door Maintenance Works")}</span><span>CONFIDENTIAL QUOTATION</span><span>Page 1 of 1</span></footer></main></body></html>`;
     await finishPrint(popup, html);
   } catch (error) {
     popup.close();
