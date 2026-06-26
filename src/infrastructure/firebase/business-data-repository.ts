@@ -1,9 +1,10 @@
-import { collection, doc, getDoc, getDocs, serverTimestamp, setDoc, writeBatch, type DocumentReference } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, runTransaction, serverTimestamp, setDoc, writeBatch, type DocumentReference } from "firebase/firestore";
 import type { BusinessDataSet } from "@/domain/entities/business";
 import { db } from "@/infrastructure/firebase/client";
 
 const clean = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const safeId = (value: string, index: number) => (value || `record-${index}`).replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 120);
+const reservationId = (value: string) => value.trim().toUpperCase().replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 120);
 
 export class FirebaseBusinessDataRepository {
   private async deleteBatch(ownerId: string, batchId: string) {
@@ -42,18 +43,78 @@ export class FirebaseBusinessDataRepository {
       ? (current.data() as { activeBatchId?: string }).activeBatchId
       : undefined;
     const batchId = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
-    const operations: Array<{ ref: ReturnType<typeof doc>; value: object }> = [];
+    const operations: Array<{ ref: ReturnType<typeof doc>; value: object; merge?: boolean }> = [];
     const base = ["businessData", ownerId, "imports", batchId] as const;
     operations.push({ ref: doc(db, ...base), value: { ownerId, sourceFile, createdAt: new Date().toISOString() } });
     (["clients", "projects", "quotations", "invoices"] as const).forEach((entity) => data[entity].forEach((record, index) => operations.push({ ref: doc(db, ...base, entity, safeId(record.id, index)), value: clean(record) })));
+    data.quotations.forEach((quotation) => {
+      const id = reservationId(quotation.id || "");
+      if (!id) return;
+      operations.push({
+        ref: doc(db, "businessData", ownerId, "quotationNumberReservations", id),
+        value: {
+          ownerId,
+          quotationId: String(quotation.id || "").trim().toUpperCase(),
+          syncedAt: serverTimestamp(),
+        },
+        merge: true,
+      });
+    });
     for (let index = 0; index < operations.length; index += 400) {
       const batch = writeBatch(db);
-      operations.slice(index, index + 400).forEach((operation) => batch.set(operation.ref, operation.value));
+      operations.slice(index, index + 400).forEach((operation) => {
+        if (operation.merge) {
+          batch.set(operation.ref, operation.value, { merge: true });
+          return;
+        }
+
+        batch.set(operation.ref, operation.value);
+      });
       await batch.commit();
     }
     await setDoc(rootRef, { ownerId, activeBatchId: batchId, company: clean(data.company), sourceFile, updatedAt: serverTimestamp() });
     if (previousBatchId && previousBatchId !== batchId) {
       await this.deleteBatch(ownerId, previousBatchId).catch(() => undefined);
     }
+  }
+
+  async reserveQuotationId(ownerId: string, quotationId: string) {
+    const id = reservationId(quotationId);
+    const ref = doc(db, "businessData", ownerId, "quotationNumberReservations", id);
+
+    await runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(ref);
+
+      if (snapshot.exists()) {
+        throw new Error(`Quotation number ${quotationId} is already reserved.`);
+      }
+
+      transaction.set(ref, {
+        ownerId,
+        quotationId,
+        reservedAt: serverTimestamp(),
+      });
+    });
+  }
+
+  async releaseQuotationId(ownerId: string, quotationId: string) {
+    const id = reservationId(quotationId);
+    if (!id) return;
+
+    await deleteDoc(doc(db, "businessData", ownerId, "quotationNumberReservations", id));
+  }
+
+  async pruneStaleQuotationReservations(ownerId: string, activeQuotationIds: string[]) {
+    const activeIds = new Set(activeQuotationIds.map(reservationId).filter(Boolean));
+    const snapshot = await getDocs(
+      collection(db, "businessData", ownerId, "quotationNumberReservations"),
+    );
+
+    await Promise.all(
+      snapshot.docs.map((reservation) => {
+        if (activeIds.has(reservation.id)) return Promise.resolve();
+        return deleteDoc(reservation.ref);
+      }),
+    );
   }
 }

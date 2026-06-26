@@ -8,7 +8,11 @@ import workbook from "@/data/workbook-data.json";
 import type { BusinessDataSet } from "@/domain/entities/business";
 import { FirebaseBusinessDataRepository } from "@/infrastructure/firebase/business-data-repository";
 import { useAuth } from "@/presentation/providers/auth-provider";
-import { createQuotationSerial, ensureQuotationSerial } from "@/lib/record-ids";
+import {
+  createQuotationSerial,
+  ensureQuotationSerial,
+  normalizeQuotationId,
+} from "@/lib/record-ids";
 import {
   createContext,
   useCallback,
@@ -501,8 +505,12 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       };
 
       saveInstant(next, `${key}-delete`);
+
+      if (key === "quotations" && user) {
+        await repository.releaseQuotationId(user.uid, id);
+      }
     },
-    [data, saveInstant],
+    [data, repository, saveInstant, user],
   );
 
   const createProject = useCallback(
@@ -521,8 +529,35 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
 
   const createQuotation = useCallback(
     async (quotation: EntityMap["quotations"]) => {
+      const existingIds = data.quotations.map((item) => item.id);
+      const requestedId = normalizeQuotationId(quotation.id || "");
+      const normalizedExisting = new Set(
+        existingIds.map((id) => normalizeQuotationId(id)),
+      );
+
+      if (!requestedId) {
+        throw new Error("Quotation number is required.");
+      }
+
+      if (normalizedExisting.has(requestedId)) {
+        throw new Error(`Quotation number ${requestedId} is already used.`);
+      }
+
+      if (user) {
+        try {
+          await repository.reserveQuotationId(user.uid, requestedId);
+        } catch {
+          await repository.pruneStaleQuotationReservations(
+            user.uid,
+            existingIds,
+          );
+          await repository.reserveQuotationId(user.uid, requestedId);
+        }
+      }
+
       const serialized = {
         ...quotation,
+        id: requestedId,
         serialNumber: quotation.serialNumber || createQuotationSerial(),
       };
       const project = buildProjectFromQuotation(
@@ -542,7 +577,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
 
       saveInstant(next, "quotations-create");
     },
-    [data, saveInstant],
+    [data, repository, saveInstant, user],
   );
 
   const createInvoiceFromQuotation = useCallback(
