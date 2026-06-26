@@ -543,14 +543,22 @@ export function QuotationsScreen() {
     await updateQuotationStatus(quotation.id, nextStatus as QuotationStatus);
   }
 
-  async function handleDelete(quotation: ReturnType<typeof normalizeQuotation>) {
-    const confirmed = window.confirm(
-      `Delete quotation "${quotation.id}" for "${quotation.companyName}"?`
-    );
+  function handleDelete(quotation: ReturnType<typeof normalizeQuotation>) {
+    window.setTimeout(() => {
+      const confirmed = window.confirm(
+        `Delete quotation "${quotation.id}" for "${quotation.companyName}"?`
+      );
 
-    if (!confirmed) return;
+      if (!confirmed) return;
 
-    await deleteRecord("quotations", quotation.id);
+      void deleteRecord("quotations", quotation.id).catch((caughtError) => {
+        setFormError(
+          caughtError instanceof Error
+            ? caughtError.message
+            : "Quotation could not be deleted."
+        );
+      });
+    }, 0);
   }
 
   async function handleExport(quotation: ReturnType<typeof normalizeQuotation>) {
