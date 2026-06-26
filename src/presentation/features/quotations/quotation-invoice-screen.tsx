@@ -10,6 +10,7 @@ import {
   downloadLocalInvoiceAttachment,
   saveLocalInvoiceAttachment,
 } from "@/infrastructure/local/invoice-attachment";
+import { createNextInvoiceId } from "@/lib/record-ids";
 import { routes } from "@/lib/routes";
 import { PageHeader, StatusBadge } from "@/presentation/components/ui";
 import { money } from "@/presentation/data/sample-data";
@@ -279,7 +280,7 @@ export function QuotationInvoiceScreen() {
     const form = new FormData(event.currentTarget);
     const invoiceId =
       formValue(form, "id") ||
-      `INV-${String(data.invoices.length + 1).padStart(5, "0")}`;
+      createNextInvoiceId(data.invoices.map((item) => item.id));
 
     const finalLineItems = activeLineItems;
     let localAttachmentKey = "";
@@ -307,11 +308,11 @@ export function QuotationInvoiceScreen() {
         invoiceDate: formValue(form, "invoiceDate") || today(),
         dueDate: formValue(form, "dueDate"),
         paymentTerms: formValue(form, "paymentTerms") || "Due on Receipt",
+        purchaseOrderNumber: formValue(form, "purchaseOrderNumber"),
         amount: totals.amount - formNumber(form, "discountAmount"),
         received: formNumber(form, "received"),
         status: "pending",
         remarks: formValue(form, "remarks"),
-        uuid: formValue(form, "uuid"),
         customerAddress:
           formValue(form, "customerAddress") ||
           draft?.customerAddress ||
@@ -585,8 +586,10 @@ export function QuotationInvoiceScreen() {
                 <span>Invoice No.</span>
                 <input
                   name="id"
-                  defaultValue={draft?.id}
-                  placeholder="Generated automatically"
+                  defaultValue={
+                    draft?.id ||
+                    createNextInvoiceId(data.invoices.map((item) => item.id))
+                  }
                 />
               </label>
               <label className="field">
@@ -595,14 +598,6 @@ export function QuotationInvoiceScreen() {
                   name="invoiceDate"
                   type="date"
                   defaultValue={draft?.invoiceDate || today()}
-                />
-              </label>
-              <label className="field">
-                <span>Due Date</span>
-                <input
-                  name="dueDate"
-                  type="date"
-                  defaultValue={draft?.dueDate}
                 />
               </label>
               <label className="field">
@@ -622,15 +617,26 @@ export function QuotationInvoiceScreen() {
                 />
               </label>
               <label className="field">
-                <span>Payment Terms</span>
+                <span>Terms</span>
                 <input
                   name="paymentTerms"
                   defaultValue={draft?.paymentTerms || "Due on Receipt"}
                 />
               </label>
               <label className="field">
-                <span>ZATCA UUID</span>
-                <input name="uuid" defaultValue={draft?.uuid} />
+                <span>Due Date</span>
+                <input
+                  name="dueDate"
+                  type="date"
+                  defaultValue={draft?.dueDate}
+                />
+              </label>
+              <label className="field">
+                <span>P.O.#</span>
+                <input
+                  name="purchaseOrderNumber"
+                  defaultValue={draft?.purchaseOrderNumber}
+                />
               </label>
               <label className="field">
                 <span>Currency</span>
@@ -655,7 +661,7 @@ export function QuotationInvoiceScreen() {
                 />
               </label>
               <label className="field">
-                <span>Customer VAT</span>
+                <span>VAT No.</span>
                 <input
                   name="customerVatNumber"
                   defaultValue={

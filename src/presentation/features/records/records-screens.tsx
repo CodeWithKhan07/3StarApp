@@ -1,7 +1,7 @@
 "use client";
 
-import { parseInvoiceDocument, type InvoiceImportDraft } from "@/application/services/invoice-import";
 import { exportInvoicePdf } from "@/application/services/document-export";
+import { parseInvoiceDocument, type InvoiceImportDraft } from "@/application/services/invoice-import";
 import type { Invoice, Project } from "@/domain/entities/business";
 import { routes } from "@/lib/routes";
 import { EmptyTableRow, PageHeader, StatusBadge } from "@/presentation/components/ui";
@@ -14,16 +14,186 @@ import { useRef, useState, type ReactNode } from "react";
 
 function Toolbar({query,onQuery,placeholder,children}:{query:string;onQuery:(value:string)=>void;placeholder:string;children?:ReactNode}){return <div className="toolbar"><label className="search-field"><Search size={14}/><input value={query} onChange={event=>onQuery(event.target.value)} placeholder={placeholder}/></label>{children}</div>;}
 
-export function ClientsScreen(){
-  const {data,createRecord}=useBusinessData();const [query,setQuery]=useState("");const [city,setCity]=useState("all");const [showForm,setShowForm]=useState(false);
-  const filtered=data.clients.filter(client=>`${client.companyName} ${client.brandName} ${client.contactPerson}`.toLowerCase().includes(query.toLowerCase())&&(city==="all"||client.city===city));
-  async function addClient(event:React.FormEvent<HTMLFormElement>){event.preventDefault();const form=new FormData(event.currentTarget);await createRecord("clients",{id:crypto.randomUUID(),companyName:String(form.get("companyName")),brandName:String(form.get("brandName")),contactPerson:String(form.get("contactPerson")),mobile:String(form.get("mobile")),email:String(form.get("email")),city:String(form.get("city")),contractStatus:"active"});setShowForm(false);}
-  return <><PageHeader title="Clients" description="Manage company master records and open a full page to edit each client." actions={<button className="button button--primary" onClick={()=>setShowForm(value=>!value)}><Plus size={14}/>New Client</button>}/>
-    {showForm?<form className="card form-card" onSubmit={event=>void addClient(event)}><div className="form-grid">{[["companyName","Company Name"],["brandName","Brand Name"],["contactPerson","Contact Person"],["mobile","Mobile"],["email","Email"],["city","City"]].map(([name,label])=><label className="field" key={name}><span>{label}</span><input name={name} type={name==="email"?"email":"text"} required/></label>)}</div><div className="form-actions"><button type="button" className="button" onClick={()=>setShowForm(false)}>Cancel</button><button className="button button--primary">Save Client</button></div></form>:null}
-    <section className="card"><Toolbar query={query} onQuery={setQuery} placeholder="Search company or brand..."><select className="select" value={city} onChange={event=>setCity(event.target.value)}><option value="all">All Cities</option>{[...new Set(data.clients.map(item=>item.city).filter(Boolean))].map(item=><option key={item}>{item}</option>)}</select></Toolbar><div className="table-wrap desktop-data-table"><table className="data-table clients-table"><thead><tr><th>Company</th><th>Brand</th><th>Contact</th><th>Details</th><th>City</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filtered.length?filtered.map(client=><tr key={client.id}><td>{client.companyName}</td><td>{client.brandName||"—"}</td><td>{client.contactPerson||"—"}</td><td>{client.mobile||"—"}<br/><small>{client.email}</small></td><td>{client.city||"—"}</td><td><StatusBadge value={client.contractStatus}/></td><td><Link className="icon-button" href={`${routes.editClient}?id=${encodeURIComponent(client.id)}`} title="Edit full client"><Edit3 size={15}/></Link></td></tr>):<EmptyTableRow columns={7}/>}</tbody></table></div><div className="mobile-card-list">{filtered.length?filtered.map(client=><article className="mobile-record-card" key={client.id}><header><div><span>Client</span><strong>{client.companyName}</strong><small>{client.brandName||client.city||"No brand"}</small></div><StatusBadge value={client.contractStatus}/></header><dl><div><dt>Contact</dt><dd>{client.contactPerson||"—"}</dd></div><div><dt>Mobile</dt><dd>{client.mobile||"—"}</dd></div><div><dt>Email</dt><dd>{client.email||"—"}</dd></div><div><dt>City</dt><dd>{client.city||"—"}</dd></div></dl><footer><Link className="button" href={`${routes.editClient}?id=${encodeURIComponent(client.id)}`}><Edit3 size={14}/>Edit Client</Link></footer></article>):<div className="mobile-empty-state">No clients found.</div>}</div></section>
-  </>;
-}
+export function ClientsScreen() {
+  const { data, createRecord } = useBusinessData();
+  const [query, setQuery] = useState("");
+  const [city, setCity] = useState("all");
+  const [showForm, setShowForm] = useState(false);
+  const filtered = data.clients.filter((client) => {
+    const target = [
+      client.companyName,
+      client.brandName,
+      client.contactPerson,
+      client.mobile,
+      client.email,
+      client.address,
+      client.vatNumber,
+      client.crNumber,
+      client.storeName,
+      client.storeLocation,
+    ]
+      .join(" ")
+      .toLowerCase();
 
+    return target.includes(query.toLowerCase()) && (city === "all" || client.city === city);
+  });
+
+  async function addClient(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const value = (key: string) => String(form.get(key) || "").trim();
+    await createRecord("clients", {
+      id: crypto.randomUUID(),
+      companyName: value("companyName"),
+      brandName: value("brandName"),
+      contactPerson: value("contactPerson"),
+      mobile: value("mobile"),
+      email: value("email"),
+      address: value("address"),
+      city: value("city"),
+      country: value("country"),
+      vatNumber: value("vatNumber"),
+      crNumber: value("crNumber"),
+      storeName: value("storeName"),
+      storeLocation: value("storeLocation"),
+      contractStatus: "active",
+      remarks: value("remarks"),
+    });
+    setShowForm(false);
+  }
+
+  return (
+    <>
+      <PageHeader
+        title="Clients"
+        description="Manage company master records used for quotations and invoices."
+        actions={
+          <button className="button button--primary" onClick={() => setShowForm((value) => !value)}>
+            <Plus size={14} />
+            New Client
+          </button>
+        }
+      />
+
+      {showForm ? (
+        <form className="card form-card" onSubmit={(event) => void addClient(event)}>
+          <div className="form-grid">
+            {[
+              ["companyName", "Company Name *"],
+              ["brandName", "Brand Name"],
+              ["contactPerson", "Contact Person"],
+              ["mobile", "Mobile / WhatsApp"],
+              ["email", "Email"],
+              ["vatNumber", "VAT Number"],
+              ["crNumber", "CR Number"],
+              ["city", "City"],
+              ["country", "Country"],
+              ["storeName", "Default Store / Branch"],
+              ["storeLocation", "Default Store Location"],
+            ].map(([name, label]) => (
+              <label className="field" key={name}>
+                <span>{label}</span>
+                <input name={name} type={name === "email" ? "email" : "text"} required={name === "companyName"} />
+              </label>
+            ))}
+            <label className="field field--full">
+              <span>Address</span>
+              <input name="address" />
+            </label>
+            <label className="field field--full">
+              <span>Remarks</span>
+              <textarea name="remarks" rows={3} />
+            </label>
+          </div>
+          <div className="form-actions">
+            <button type="button" className="button" onClick={() => setShowForm(false)}>
+              Cancel
+            </button>
+            <button className="button button--primary">Save Client</button>
+          </div>
+        </form>
+      ) : null}
+
+      <section className="card">
+        <Toolbar query={query} onQuery={setQuery} placeholder="Search company, brand, VAT, or address...">
+          <select className="select" value={city} onChange={(event) => setCity(event.target.value)}>
+            <option value="all">All Cities</option>
+            {[...new Set(data.clients.map((item) => item.city).filter(Boolean))].map((item) => (
+              <option key={item}>{item}</option>
+            ))}
+          </select>
+        </Toolbar>
+        <div className="table-wrap desktop-data-table">
+          <table className="data-table clients-table">
+            <thead>
+              <tr>
+                <th>Company</th>
+                <th>Brand / Store</th>
+                <th>Contact</th>
+                <th>Tax Details</th>
+                <th>Location</th>
+                <th>Status</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.length ? (
+                filtered.map((client) => (
+                  <tr key={client.id}>
+                    <td>{client.companyName}<br /><small>{client.address || "-"}</small></td>
+                    <td>{client.brandName || client.storeName || "-"}<br /><small>{client.storeLocation || ""}</small></td>
+                    <td>{client.contactPerson || "-"}<br /><small>{client.mobile || client.email || "-"}</small></td>
+                    <td>VAT: {client.vatNumber || "-"}<br /><small>CR: {client.crNumber || "-"}</small></td>
+                    <td>{client.city || "-"}{client.country ? `, ${client.country}` : ""}</td>
+                    <td><StatusBadge value={client.contractStatus} /></td>
+                    <td>
+                      <Link className="icon-button" href={`${routes.editClient}?id=${encodeURIComponent(client.id)}`} title="Edit full client">
+                        <Edit3 size={15} />
+                      </Link>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <EmptyTableRow columns={7} />
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="mobile-card-list">
+          {filtered.length ? (
+            filtered.map((client) => (
+              <article className="mobile-record-card" key={client.id}>
+                <header>
+                  <div>
+                    <span>Client</span>
+                    <strong>{client.companyName}</strong>
+                    <small>{client.brandName || client.city || "No brand"}</small>
+                  </div>
+                  <StatusBadge value={client.contractStatus} />
+                </header>
+                <dl>
+                  <div><dt>Contact</dt><dd>{client.contactPerson || "-"}</dd></div>
+                  <div><dt>Mobile</dt><dd>{client.mobile || "-"}</dd></div>
+                  <div><dt>VAT</dt><dd>{client.vatNumber || "-"}</dd></div>
+                  <div><dt>City</dt><dd>{client.city || "-"}</dd></div>
+                  <div className="mobile-field-wide"><dt>Address</dt><dd>{client.address || "-"}</dd></div>
+                </dl>
+                <footer>
+                  <Link className="button" href={`${routes.editClient}?id=${encodeURIComponent(client.id)}`}>
+                    <Edit3 size={14} />
+                    Edit Client
+                  </Link>
+                </footer>
+              </article>
+            ))
+          ) : (
+            <div className="mobile-empty-state">No clients found.</div>
+          )}
+        </div>
+      </section>
+    </>
+  );
+}
 export function ProjectsScreen({status}:{status?:Project["status"]}){const {data}=useBusinessData();const [query,setQuery]=useState("");const source=status?data.projects.filter(item=>item.status===status):data.projects;const filtered=source.filter(item=>`${item.id} ${item.company} ${item.workDescription}`.toLowerCase().includes(query.toLowerCase()));const groupedProjects=Array.from(filtered.reduce((map,item)=>{const company=item.company?.trim()||"Unnamed Company";const list=map.get(company)||[];list.push(item);map.set(company,list);return map;},new Map<string,Project[]>()).entries()).map(([company,items])=>({company,items,total:items.reduce((sum,item)=>sum+item.value,0),completed:items.filter(item=>item.status==="completed").length}));const title=status==="in-progress"?"Ongoing Projects":status==="completed"?"Completed Projects":"Projects";return <><PageHeader title={title} description="Monitor projects; use the edit action for complete record changes."/><section className="card"><Toolbar query={query} onQuery={setQuery} placeholder="Search projects..."/><div className="table-wrap desktop-data-table"><table className="data-table mobile-projects-table"><thead><tr><th>ID</th><th>Company</th><th>Store</th><th>Description</th><th>Value</th><th>Completion</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filtered.length?filtered.map(project=><tr key={project.id}><td>{project.id}</td><td>{project.company}</td><td>{project.store}</td><td>{project.workDescription}</td><td>{money(project.value)}</td><td>{project.completion}%</td><td><StatusBadge value={project.status}/></td><td><Link className="icon-button" href={`${routes.editProject}?id=${encodeURIComponent(project.id)}`}><Edit3 size={15}/></Link></td></tr>):<EmptyTableRow columns={8}/>}</tbody></table></div><div className="mobile-card-list mobile-company-list">{groupedProjects.length?groupedProjects.map(group=><section className="mobile-company-card" key={group.company}><header><span>Company History</span><h3>{group.company}</h3><small>{group.items.length} job(s) · {group.completed} completed · Total {money(group.total)}</small></header><div className="mobile-company-card__records">{group.items.map(project=><article className="mobile-record-card" key={project.id}><header><div><span>Project</span><strong>{project.id}</strong><small>{project.startDate||"No date"} · {project.store||"No branch"}</small></div><StatusBadge value={project.status}/></header><dl><div><dt>Store</dt><dd>{project.store||"—"}</dd></div><div className="mobile-field-wide"><dt>Job / Description</dt><dd>{project.workDescription||"—"}</dd></div><div><dt>Value</dt><dd>{money(project.value)}</dd></div><div><dt>Completion</dt><dd>{project.completion}%</dd></div></dl><footer><Link className="button button--primary" href={`${routes.editProject}?id=${encodeURIComponent(project.id)}`}><Edit3 size={14}/>Edit Project</Link></footer></article>)}</div></section>):<div className="mobile-empty-state">No projects found.</div>}</div></section></>;}
 
 export function InvoicesScreen({pendingOnly=false}:{pendingOnly?:boolean}){

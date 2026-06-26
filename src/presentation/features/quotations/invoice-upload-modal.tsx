@@ -1,9 +1,10 @@
 "use client";
 
 import type { Quotation } from "@/domain/entities/business";
+import { createNextInvoiceId } from "@/lib/record-ids";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
 import { X } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 
 function today() {
   return new Date().toISOString().slice(0, 10);
@@ -16,9 +17,13 @@ export function InvoiceUploadModal({
   quotation: Quotation;
   onClose: () => void;
 }) {
-  const { createInvoiceFromQuotation } = useBusinessData();
+  const { data, createInvoiceFromQuotation } = useBusinessData();
+  const nextInvoiceId = useMemo(
+    () => createNextInvoiceId(data.invoices.map((invoice) => invoice.id)),
+    [data.invoices],
+  );
 
-  const [invoiceId, setInvoiceId] = useState("");
+  const [invoiceId, setInvoiceId] = useState(nextInvoiceId);
   const [invoiceDate, setInvoiceDate] = useState(today());
   const [amount, setAmount] = useState(String(quotation.amount));
   const [paymentMode, setPaymentMode] = useState("");
@@ -87,7 +92,6 @@ export function InvoiceUploadModal({
               <input
                 value={invoiceId}
                 onChange={(event) => setInvoiceId(event.target.value)}
-                placeholder="Auto-generated if blank"
               />
             </label>
 

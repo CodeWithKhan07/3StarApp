@@ -237,6 +237,12 @@ export function QuotationsScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importDraft, setImportDraft] = useState<QuotationImportDraft | null>(null);
+  const [clientSource, setClientSource] = useState<"new" | "saved">("new");
+  const [selectedClientId, setSelectedClientId] = useState("");
+  const [quotationCompanyName, setQuotationCompanyName] = useState("");
+  const [quotationStore, setQuotationStore] = useState("");
+  const [quotationCustomerAddress, setQuotationCustomerAddress] = useState("");
+  const [quotationCustomerVatNumber, setQuotationCustomerVatNumber] = useState("");
   const [showSqm, setShowSqm] = useState(false);
   const [vatRate, setVatRate] = useState(
     numberToInputText(data.company.vatRate) || "15"
@@ -282,9 +288,41 @@ export function QuotationsScreen() {
 
   const clientOptions = useMemo(() => {
     return data.clients
-      .map((client) => readFirstString(asRecord(client), ["companyName", "company", "name"], ""))
-      .filter(Boolean);
+      .map((client) => {
+        const record = asRecord(client);
+        const companyName = readFirstString(record, ["companyName", "company", "name"], "");
+        return {
+          id: readFirstString(record, ["id"], companyName),
+          companyName,
+          brandName: readFirstString(record, ["brandName"], ""),
+          storeName: readFirstString(record, ["storeName", "store", "branch"], ""),
+          storeLocation: readFirstString(record, ["storeLocation", "location"], ""),
+          address: readFirstString(record, ["address", "customerAddress"], ""),
+          vatNumber: readFirstString(record, ["vatNumber", "customerVatNumber"], ""),
+        };
+      })
+      .filter((client) => client.companyName);
   }, [data.clients]);
+
+  function applySavedClient(clientId: string) {
+    setSelectedClientId(clientId);
+    const client = clientOptions.find((item) => item.id === clientId);
+    if (!client) return;
+
+    setQuotationCompanyName(client.companyName);
+    setQuotationStore(client.storeName || client.brandName);
+    setQuotationCustomerAddress(client.address);
+    setQuotationCustomerVatNumber(client.vatNumber);
+  }
+
+  function resetQuotationClientFields() {
+    setClientSource("new");
+    setSelectedClientId("");
+    setQuotationCompanyName("");
+    setQuotationStore("");
+    setQuotationCustomerAddress("");
+    setQuotationCustomerVatNumber("");
+  }
 
   const filteredQuotations = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase();
@@ -389,8 +427,11 @@ export function QuotationsScreen() {
     const formElement = event.currentTarget;
     const form = new FormData(event.currentTarget);
     const quotationNo = String(form.get("id") || "").trim();
-    const companyName = String(form.get("companyName") || "").trim();
-    const store = String(form.get("store") || "").trim();
+    const companyName = quotationCompanyName.trim();
+    const store = quotationStore.trim();
+    const customerCrNumber = String(form.get("customerCrNumber") || "").trim();
+    const customerCity = String(form.get("customerCity") || "").trim();
+    const customerCountry = String(form.get("customerCountry") || "").trim();
     const issueDate = String(form.get("issueDate") || "").trim();
     const currency = String(form.get("currency") || "").trim();
     const scopeOfWork =
@@ -462,6 +503,11 @@ export function QuotationsScreen() {
       vatAmount,
       lineItems: savedLineItems,
       showSqm,
+      customerAddress: quotationCustomerAddress.trim(),
+      customerVatNumber: quotationCustomerVatNumber.trim(),
+      customerCrNumber: clientSource === "new" ? customerCrNumber : undefined,
+      customerCity: clientSource === "new" ? customerCity : undefined,
+      customerCountry: clientSource === "new" ? customerCountry : undefined,
       status: "draft",
       followUpDate: "",
     };
@@ -470,6 +516,7 @@ export function QuotationsScreen() {
       await createQuotation(quotation);
       setShowForm(false);
       setImportDraft(null);
+      resetQuotationClientFields();
       setLineItems([emptyLineItem(1)]);
       formElement.reset();
     } catch (caughtError) {
@@ -515,6 +562,12 @@ export function QuotationsScreen() {
       setLineItems(importedLines);
       setShowSqm(false);
       setVatRate(numberToInputText(parsed.vatRate) || numberToInputText(data.company.vatRate) || "15");
+      setClientSource("new");
+      setSelectedClientId("");
+      setQuotationCompanyName(parsed.companyName || "");
+      setQuotationStore(parsed.store || "");
+      setQuotationCustomerAddress("");
+      setQuotationCustomerVatNumber("");
       setImportDraft(parsed);
       setShowForm(true);
     } catch (quotationError) {
@@ -595,6 +648,7 @@ export function QuotationsScreen() {
               type="button"
               onClick={() => {
                 setImportDraft(null);
+                resetQuotationClientFields();
                 setShowSqm(false);
                 setVatRate(numberToInputText(data.company.vatRate) || "15");
                 setLineItems([emptyLineItem(1)]);
@@ -637,25 +691,99 @@ export function QuotationsScreen() {
             </label>
 
             <label className="field">
+              <span>Client Source</span>
+              <select
+                value={clientSource}
+                onChange={(event) => {
+                  const nextSource = event.target.value as "new" | "saved";
+                  setClientSource(nextSource);
+
+                  if (nextSource === "new") {
+                    setSelectedClientId("");
+                    setQuotationCompanyName("");
+                    setQuotationStore("");
+                    setQuotationCustomerAddress("");
+                    setQuotationCustomerVatNumber("");
+                    return;
+                  }
+
+                  if (clientOptions[0]) applySavedClient(clientOptions[0].id);
+                }}
+              >
+                <option value="new">Brand New Client</option>
+                <option value="saved" disabled={!clientOptions.length}>Saved Client</option>
+              </select>
+            </label>
+
+            {clientSource === "saved" ? (
+              <label className="field">
+                <span>Saved Client</span>
+                <select value={selectedClientId} onChange={(event) => applySavedClient(event.target.value)} required>
+                  {clientOptions.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.companyName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
+            <label className="field">
               <span>Company Name *</span>
               <input
                 name="companyName"
-                list="quotation-clients-list"
                 placeholder="Company / client name"
-                defaultValue={importDraft?.companyName}
+                value={quotationCompanyName}
+                onChange={(event) => setQuotationCompanyName(event.target.value)}
+                readOnly={clientSource === "saved"}
                 required
               />
-              <datalist id="quotation-clients-list">
-                {clientOptions.map((name) => (
-                  <option key={name} value={name} />
-                ))}
-              </datalist>
             </label>
 
             <label className="field">
               <span>Store / Branch</span>
-              <input name="store" placeholder="Store or branch" defaultValue={importDraft?.store} required />
+              <input
+                name="store"
+                placeholder="Store or branch"
+                value={quotationStore}
+                onChange={(event) => setQuotationStore(event.target.value)}
+                readOnly={clientSource === "saved" && Boolean(quotationStore)}
+                required
+              />
             </label>
+
+            {clientSource === "new" ? (
+              <>
+                <label className="field">
+                  <span>VAT No.</span>
+                  <input
+                    name="customerVatNumber"
+                    value={quotationCustomerVatNumber}
+                    onChange={(event) => setQuotationCustomerVatNumber(event.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <span>CR No.</span>
+                  <input name="customerCrNumber" />
+                </label>
+                <label className="field">
+                  <span>City</span>
+                  <input name="customerCity" />
+                </label>
+                <label className="field">
+                  <span>Country</span>
+                  <input name="customerCountry" defaultValue="Saudi Arabia" />
+                </label>
+                <label className="field field--full">
+                  <span>Address</span>
+                  <input
+                    name="customerAddress"
+                    value={quotationCustomerAddress}
+                    onChange={(event) => setQuotationCustomerAddress(event.target.value)}
+                  />
+                </label>
+              </>
+            ) : null}
 
             <label className="field">
               <span>Date</span>
@@ -719,7 +847,7 @@ export function QuotationsScreen() {
           ) : null}
 
           <div className="form-actions">
-            <button type="button" className="button" onClick={() => { setShowForm(false); setImportDraft(null); setFormError(""); }}>
+            <button type="button" className="button" onClick={() => { setShowForm(false); setImportDraft(null); resetQuotationClientFields(); setFormError(""); }}>
               Cancel
             </button>
 

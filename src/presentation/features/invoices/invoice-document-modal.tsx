@@ -2,6 +2,7 @@
 
 import type { InvoiceImportDraft } from "@/application/services/invoice-import";
 import type { Invoice } from "@/domain/entities/business";
+import { createNextInvoiceId } from "@/lib/record-ids";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
 import { Plus, Trash2, X } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
@@ -22,6 +23,11 @@ export function InvoiceDocumentModal({
   const { data, createRecord } = useBusinessData();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [clientSource, setClientSource] = useState<"new" | "saved">("new");
+  const [selectedClientId, setSelectedClientId] = useState("");
+  const [companyName, setCompanyName] = useState(draft?.companyName || "");
+  const [customerAddress, setCustomerAddress] = useState(draft?.customerAddress || "");
+  const [customerVatNumber, setCustomerVatNumber] = useState(draft?.customerVatNumber || "");
   const [lineItems, setLineItems] = useState<NonNullable<Invoice["lineItems"]>>(
     draft?.lineItems.length
       ? draft.lineItems
@@ -48,6 +54,33 @@ export function InvoiceDocumentModal({
     );
     return { subTotal, vatAmount, amount: subTotal + vatAmount };
   }, [lineItems]);
+  const nextInvoiceId = useMemo(
+    () => createNextInvoiceId(data.invoices.map((invoice) => invoice.id)),
+    [data.invoices],
+  );
+  const clientOptions = useMemo(
+    () =>
+      data.clients
+        .map((client) => ({
+          id: client.id,
+          companyName: client.companyName,
+          address: client.address || "",
+          vatNumber: client.vatNumber || "",
+          storeName: client.storeName || client.brandName || "",
+        }))
+        .filter((client) => client.companyName),
+    [data.clients],
+  );
+
+  function applySavedClient(clientId: string) {
+    setSelectedClientId(clientId);
+    const client = clientOptions.find((item) => item.id === clientId);
+    if (!client) return;
+
+    setCompanyName(client.companyName);
+    setCustomerAddress(client.address);
+    setCustomerVatNumber(client.vatNumber);
+  }
 
   function updateLine(
     index: number,
@@ -67,15 +100,13 @@ export function InvoiceDocumentModal({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const id =
-      String(form.get("id") || "").trim() ||
-      `INV-${String(data.invoices.length + 1).padStart(5, "0")}`;
-    const companyName = String(form.get("companyName") || "").trim();
-    if (!companyName) return setError("Customer/company name is required.");
+    const id = String(form.get("id") || "").trim() || nextInvoiceId;
+    const selectedCompanyName = companyName.trim();
+    if (!selectedCompanyName) return setError("Customer/company name is required.");
 
     const invoice: Invoice = {
       id,
-      companyName,
+      companyName: selectedCompanyName,
       project: String(form.get("project") || "").trim(),
       quotationNo: String(form.get("quotationNo") || "").trim(),
       purchaseOrderNumber: String(form.get("purchaseOrderNumber") || "").trim(),
@@ -88,9 +119,8 @@ export function InvoiceDocumentModal({
       paymentMode: String(form.get("paymentMode") || "").trim(),
       status: String(form.get("status") || "pending") as Invoice["status"],
       remarks: String(form.get("remarks") || "").trim(),
-      uuid: String(form.get("uuid") || "").trim(),
-      customerAddress: String(form.get("customerAddress") || "").trim(),
-      customerVatNumber: String(form.get("customerVatNumber") || "").trim(),
+      customerAddress: customerAddress.trim(),
+      customerVatNumber: customerVatNumber.trim(),
       supplierName: String(form.get("supplierName") || "").trim(),
       supplierLegalName: String(form.get("supplierLegalName") || "").trim(),
       supplierAddress: String(form.get("supplierAddress") || "").trim(),
@@ -156,8 +186,7 @@ export function InvoiceDocumentModal({
               <span>Invoice No.</span>
               <input
                 name="id"
-                defaultValue={draft?.id}
-                placeholder="Generated automatically"
+                defaultValue={draft?.id || nextInvoiceId}
               />
             </label>
             <label className="field">
@@ -169,29 +198,69 @@ export function InvoiceDocumentModal({
               />
             </label>
             <label className="field">
-              <span>ZATCA UUID</span>
-              <input name="uuid" defaultValue={draft?.uuid} />
-            </label>
-            <label className="field">
               <span>Currency</span>
               <input name="currency" defaultValue={draft?.currency || "SAR"} />
             </label>
             <label className="field">
+              <span>Client Source</span>
+              <select
+                value={clientSource}
+                onChange={(event) => {
+                  const nextSource = event.target.value as "new" | "saved";
+                  setClientSource(nextSource);
+
+                  if (nextSource === "new") {
+                    setSelectedClientId("");
+                    setCompanyName(draft?.companyName || "");
+                    setCustomerAddress(draft?.customerAddress || "");
+                    setCustomerVatNumber(draft?.customerVatNumber || "");
+                    return;
+                  }
+
+                  if (clientOptions[0]) applySavedClient(clientOptions[0].id);
+                }}
+              >
+                <option value="new">Brand New Client</option>
+                <option value="saved" disabled={!clientOptions.length}>Saved Client</option>
+              </select>
+            </label>
+            {clientSource === "saved" ? (
+              <label className="field">
+                <span>Saved Client</span>
+                <select value={selectedClientId} onChange={(event) => applySavedClient(event.target.value)} required>
+                  {clientOptions.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.companyName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            <label className="field">
               <span>Customer / Company *</span>
-              <input name="companyName" defaultValue={draft?.companyName} />
+              <input
+                name="companyName"
+                value={companyName}
+                onChange={(event) => setCompanyName(event.target.value)}
+                readOnly={clientSource === "saved"}
+              />
             </label>
             <label className="field">
-              <span>Customer VAT Number</span>
+              <span>VAT No.</span>
               <input
                 name="customerVatNumber"
-                defaultValue={draft?.customerVatNumber}
+                value={customerVatNumber}
+                onChange={(event) => setCustomerVatNumber(event.target.value)}
+                readOnly={clientSource === "saved"}
               />
             </label>
             <label className="field field--full">
               <span>Customer Address</span>
               <input
                 name="customerAddress"
-                defaultValue={draft?.customerAddress}
+                value={customerAddress}
+                onChange={(event) => setCustomerAddress(event.target.value)}
+                readOnly={clientSource === "saved"}
               />
             </label>
             <label className="field">
@@ -203,10 +272,10 @@ export function InvoiceDocumentModal({
               <input name="quotationNo" defaultValue={draft?.quotationNo} />
             </label>
             <label className="field">
-              <span>P.O. Number</span>
+              <span>Terms</span>
               <input
-                name="purchaseOrderNumber"
-                defaultValue={draft?.purchaseOrderNumber}
+                name="paymentTerms"
+                defaultValue={draft?.paymentTerms || "Due on Receipt"}
               />
             </label>
             <label className="field">
@@ -214,10 +283,10 @@ export function InvoiceDocumentModal({
               <input name="dueDate" type="date" defaultValue={draft?.dueDate} />
             </label>
             <label className="field">
-              <span>Payment Terms</span>
+              <span>P.O.#</span>
               <input
-                name="paymentTerms"
-                defaultValue={draft?.paymentTerms || "Due on Receipt"}
+                name="purchaseOrderNumber"
+                defaultValue={draft?.purchaseOrderNumber}
               />
             </label>
             <label className="field">

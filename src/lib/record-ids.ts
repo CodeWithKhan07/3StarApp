@@ -19,6 +19,10 @@ export function normalizeQuotationId(value: string) {
   return value.trim().toUpperCase();
 }
 
+export function normalizeInvoiceId(value: string) {
+  return value.trim().toUpperCase();
+}
+
 export function createNextQuotationId(existingIds: string[], startAt = 150) {
   const highestNumericId = existingIds.reduce((highest, id) => {
     const trimmed = id.trim();
@@ -29,4 +33,17 @@ export function createNextQuotationId(existingIds: string[], startAt = 150) {
   }, startAt - 1);
 
   return String(highestNumericId + 1);
+}
+
+export function createNextInvoiceId(existingIds: string[], startAt = 85) {
+  const highestNumericId = existingIds.reduce((highest, id) => {
+    const trimmed = id.trim();
+    const numericText = trimmed.match(/^(?:INV[-\s]*)?0*(\d+)$/i)?.[1];
+
+    if (!numericText) return highest;
+
+    return Math.max(highest, Number(numericText));
+  }, startAt - 1);
+
+  return `INV-${String(highestNumericId + 1).padStart(6, "0")}`;
 }

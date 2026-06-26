@@ -17,6 +17,9 @@ const schemas: Record<EntityName, FieldAliases> = {
     companyName: ["company name", "client name", "customer name", "company", "client", "customer", "account name"],
     brandName: ["brand name", "trade name", "brand trade name"], contactPerson: ["contact person", "contact name", "representative"],
     mobile: ["mobile", "phone", "phone number", "contact number", "whatsapp"], email: ["email", "email address"], city: ["city", "location"],
+    address: ["address", "customer address", "client address", "billing address"], country: ["country"],
+    vatNumber: ["vat number", "vat no", "trn", "tax number"], crNumber: ["cr number", "cr no", "commercial registration"],
+    storeName: ["store name", "branch", "store branch"], storeLocation: ["store location", "branch location"],
     contractStatus: ["contract status", "client status", "status"], remarks: ["remarks", "notes", "comments"],
   },
   projects: {
@@ -106,7 +109,7 @@ export async function parseBusinessWorkbook(file: File, current: BusinessDataSet
       if (!hasRequired) continue;
       if (table.entity === "clients") {
         const companyName = stringValue(pick(row, table.map, "companyName")); if (!companyName) continue;
-        clients.push({ id: `C-${clients.length + 1}`, companyName, brandName: stringValue(pick(row, table.map, "brandName")), contactPerson: stringValue(pick(row, table.map, "contactPerson")), mobile: stringValue(pick(row, table.map, "mobile")), email: stringValue(pick(row, table.map, "email")), city: stringValue(pick(row, table.map, "city")), contractStatus: statusValue(pick(row, table.map, "contractStatus"), "active") as Client["contractStatus"], remarks: stringValue(pick(row, table.map, "remarks")) });
+        clients.push({ id: `C-${clients.length + 1}`, companyName, brandName: stringValue(pick(row, table.map, "brandName")), contactPerson: stringValue(pick(row, table.map, "contactPerson")), mobile: stringValue(pick(row, table.map, "mobile")), email: stringValue(pick(row, table.map, "email")), address: stringValue(pick(row, table.map, "address")), city: stringValue(pick(row, table.map, "city")), country: stringValue(pick(row, table.map, "country")), vatNumber: stringValue(pick(row, table.map, "vatNumber")), crNumber: stringValue(pick(row, table.map, "crNumber")), storeName: stringValue(pick(row, table.map, "storeName")), storeLocation: stringValue(pick(row, table.map, "storeLocation")), contractStatus: statusValue(pick(row, table.map, "contractStatus"), "active") as Client["contractStatus"], remarks: stringValue(pick(row, table.map, "remarks")) });
       } else if (table.entity === "projects") {
         projects.push({ id: stringValue(pick(row, table.map, "id")) || `PRJ-${projects.length + 1}`, company: stringValue(pick(row, table.map, "company")), store: stringValue(pick(row, table.map, "store")), workDescription: stringValue(pick(row, table.map, "workDescription")), category: stringValue(pick(row, table.map, "category")), value: numberValue(pick(row, table.map, "value")), startDate: stringValue(pick(row, table.map, "startDate")), expectedCompletion: stringValue(pick(row, table.map, "expectedCompletion")), completion: numberValue(pick(row, table.map, "completion")), status: statusValue(pick(row, table.map, "status"), "upcoming") as Project["status"], priority: "medium" });
       } else if (table.entity === "quotations") {

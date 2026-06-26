@@ -9,8 +9,10 @@ import type { BusinessDataSet } from "@/domain/entities/business";
 import { FirebaseBusinessDataRepository } from "@/infrastructure/firebase/business-data-repository";
 import { useAuth } from "@/presentation/providers/auth-provider";
 import {
+  createNextInvoiceId,
   createQuotationSerial,
   ensureQuotationSerial,
+  normalizeInvoiceId,
   normalizeQuotationId,
 } from "@/lib/record-ids";
 import {
@@ -203,34 +205,46 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
   const syncQueueRef = useRef<Promise<void>>(Promise.resolve());
   const syncRevisionRef = useRef(0);
   const mutationRevisionRef = useRef(0);
+  const localPersistRevisionRef = useRef(0);
+  const pendingPersistRevisionRef = useRef(0);
 
   const persistLocal = useCallback((next: BusinessDataSet) => {
     setData(next);
 
     if (!isBrowser()) return;
 
-    try {
-      window.localStorage.setItem(localKey, JSON.stringify(next));
-    } catch {
-      setLastError("Local cache is full. Data remains active in memory.");
-    }
+    const revision = ++localPersistRevisionRef.current;
+    window.setTimeout(() => {
+      if (revision !== localPersistRevisionRef.current) return;
+
+      try {
+        window.localStorage.setItem(localKey, JSON.stringify(next));
+      } catch {
+        setLastError("Local cache is full. Data remains active in memory.");
+      }
+    }, 0);
   }, []);
 
   const savePendingSync = useCallback(
     (next: BusinessDataSet, source: string) => {
       if (!isBrowser()) return;
 
-      try {
-        window.localStorage.setItem(
-          pendingKey,
-          JSON.stringify({
-            data: next,
-            source,
-          }),
-        );
-      } catch {
-        setLastError("Pending cloud sync could not be cached locally.");
-      }
+      const revision = ++pendingPersistRevisionRef.current;
+      window.setTimeout(() => {
+        if (revision !== pendingPersistRevisionRef.current) return;
+
+        try {
+          window.localStorage.setItem(
+            pendingKey,
+            JSON.stringify({
+              data: next,
+              source,
+            }),
+          );
+        } catch {
+          setLastError("Pending cloud sync could not be cached locally.");
+        }
+      }, 0);
     },
     [],
   );
@@ -251,6 +265,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
           await repository.replace(user.uid, next, source);
 
           if (revision === syncRevisionRef.current) {
+            pendingPersistRevisionRef.current += 1;
             if (isBrowser()) window.localStorage.removeItem(pendingKey);
             setSyncState("synced");
             setLastError("");
@@ -438,6 +453,23 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
 
   const createRecord = useCallback(
     async <TKey extends CollectionKey>(key: TKey, record: EntityMap[TKey]) => {
+      if (key === "invoices" && isEntityWithId(record)) {
+        const requestedId = normalizeInvoiceId(record.id || "");
+        const existingIds = data.invoices.map((item) =>
+          normalizeInvoiceId(item.id),
+        );
+
+        if (!requestedId) {
+          throw new Error("Invoice number is required.");
+        }
+
+        if (existingIds.includes(requestedId)) {
+          throw new Error(`Invoice number ${requestedId} is already used.`);
+        }
+
+        record = { ...record, id: requestedId } as EntityMap[TKey];
+      }
+
       const next: BusinessDataSet = {
         ...data,
         [key]: [record, ...data[key]],
@@ -568,9 +600,34 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
         ...serialized,
         linkedProjectId: project.id,
       };
+      const normalizedClientName = quotation.companyName.trim().toLowerCase();
+      const shouldCreateClient =
+        Boolean(normalizedClientName) &&
+        !data.clients.some(
+          (client) => client.companyName.trim().toLowerCase() === normalizedClientName,
+        );
+      const autoClient: EntityMap["clients"] | null = shouldCreateClient
+        ? {
+            id: crypto.randomUUID(),
+            companyName: quotation.companyName.trim(),
+            brandName: "",
+            contactPerson: "",
+            mobile: "",
+            email: "",
+            address: quotation.customerAddress || "",
+            city: quotation.customerCity || "",
+            country: quotation.customerCountry || "",
+            vatNumber: quotation.customerVatNumber || "",
+            crNumber: quotation.customerCrNumber || "",
+            storeName: quotation.store || "",
+            storeLocation: quotation.storeLocation || "",
+            contractStatus: "active",
+          }
+        : null;
 
       const next: BusinessDataSet = {
         ...data,
+        clients: autoClient ? [autoClient, ...data.clients] : data.clients,
         quotations: [linkedQuotation, ...data.quotations],
         projects: [project, ...data.projects],
       };
@@ -600,10 +657,21 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
         );
       }
 
+      const invoiceId = normalizeInvoiceId(
+        draft.id?.trim() ||
+          createNextInvoiceId(data.invoices.map((item) => item.id)),
+      );
+
+      if (
+        data.invoices.some(
+          (invoice) => normalizeInvoiceId(invoice.id) === invoiceId,
+        )
+      ) {
+        throw new Error(`Invoice number ${invoiceId} is already used.`);
+      }
+
       const invoice: EntityMap["invoices"] = {
-        id:
-          draft.id?.trim() ||
-          `INV-${String(data.invoices.length + 1).padStart(5, "0")}`,
+        id: invoiceId,
         companyName: quotation.companyName,
         project: quotation.store || quotation.companyName,
         quotationNo: quotation.id,

@@ -127,7 +127,13 @@ export function ClientEditScreen() {
         contactPerson: text(form, "contactPerson"),
         mobile: text(form, "mobile"),
         email: text(form, "email"),
+        address: text(form, "address"),
         city: text(form, "city"),
+        country: text(form, "country"),
+        vatNumber: text(form, "vatNumber"),
+        crNumber: text(form, "crNumber"),
+        storeName: text(form, "storeName"),
+        storeLocation: text(form, "storeLocation"),
         remarks: text(form, "remarks"),
       });
       router.replace(routes.clients);
@@ -179,6 +185,30 @@ export function ClientEditScreen() {
         <label className="field">
           <span>City</span>
           <input name="city" defaultValue={record.city} />
+        </label>
+        <label className="field">
+          <span>Country</span>
+          <input name="country" defaultValue={record.country} />
+        </label>
+        <label className="field">
+          <span>VAT Number</span>
+          <input name="vatNumber" defaultValue={record.vatNumber} />
+        </label>
+        <label className="field">
+          <span>CR Number</span>
+          <input name="crNumber" defaultValue={record.crNumber} />
+        </label>
+        <label className="field">
+          <span>Default Store / Branch</span>
+          <input name="storeName" defaultValue={record.storeName} />
+        </label>
+        <label className="field">
+          <span>Default Store Location</span>
+          <input name="storeLocation" defaultValue={record.storeLocation} />
+        </label>
+        <label className="field field--full">
+          <span>Address</span>
+          <input name="address" defaultValue={record.address} />
         </label>
         <label className="field field--full">
           <span>Remarks</span>
@@ -732,7 +762,6 @@ export function InvoiceEditScreen() {
         followUpDate: text(f, "followUpDate"),
         remarks: text(f, "remarks"),
         notes: text(f, "notes"),
-        uuid: text(f, "uuid"),
         customerAddress: text(f, "customerAddress"),
         customerVatNumber: text(f, "customerVatNumber"),
         supplierCrNumber: text(f, "supplierCrNumber"),
@@ -805,10 +834,6 @@ export function InvoiceEditScreen() {
           <input value={record.id} disabled />
         </label>
         <label className="field">
-          <span>ZATCA UUID</span>
-          <input name="uuid" defaultValue={record.uuid} />
-        </label>
-        <label className="field">
           <span>Customer / Company *</span>
           <input
             name="companyName"
@@ -817,7 +842,7 @@ export function InvoiceEditScreen() {
           />
         </label>
         <label className="field">
-          <span>Customer VAT</span>
+          <span>VAT No.</span>
           <input
             name="customerVatNumber"
             defaultValue={record.customerVatNumber}
@@ -836,13 +861,6 @@ export function InvoiceEditScreen() {
           <input name="quotationNo" defaultValue={record.quotationNo} />
         </label>
         <label className="field">
-          <span>P.O. Number</span>
-          <input
-            name="purchaseOrderNumber"
-            defaultValue={record.purchaseOrderNumber}
-          />
-        </label>
-        <label className="field">
           <span>Invoice Date</span>
           <input
             name="invoiceDate"
@@ -851,14 +869,21 @@ export function InvoiceEditScreen() {
           />
         </label>
         <label className="field">
+          <span>Terms</span>
+          <input
+            name="paymentTerms"
+            defaultValue={record.paymentTerms || "Due on Receipt"}
+          />
+        </label>
+        <label className="field">
           <span>Due Date</span>
           <input name="dueDate" type="date" defaultValue={record.dueDate} />
         </label>
         <label className="field">
-          <span>Payment Terms</span>
+          <span>P.O.#</span>
           <input
-            name="paymentTerms"
-            defaultValue={record.paymentTerms || "Due on Receipt"}
+            name="purchaseOrderNumber"
+            defaultValue={record.purchaseOrderNumber}
           />
         </label>
         <label className="field">

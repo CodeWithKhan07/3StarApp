@@ -10,7 +10,13 @@ export interface Client {
   contactPerson: string;
   mobile: string;
   email: string;
+  address?: string;
   city: string;
+  country?: string;
+  vatNumber?: string;
+  crNumber?: string;
+  storeName?: string;
+  storeLocation?: string;
   contractStatus: RecordStatus;
   remarks?: string;
 }
@@ -75,6 +81,9 @@ export interface Quotation {
   linkedProjectId?: string;
   customerVatNumber?: string;
   customerAddress?: string;
+  customerCrNumber?: string;
+  customerCity?: string;
+  customerCountry?: string;
   currency?: string;
   subTotal?: number;
   vatRate?: number;
