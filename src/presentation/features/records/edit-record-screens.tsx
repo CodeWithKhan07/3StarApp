@@ -16,6 +16,22 @@ const number = (form: FormData, key: string) => {
   const parsed = Number(form.get(key) || 0);
   return Number.isFinite(parsed) ? parsed : 0;
 };
+const decimalText = (value: unknown) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed !== 0 ? String(value) : "";
+};
+const normalizeDecimalInput = (value: string) => {
+  const normalized = value.replace(/,/g, ".").replace(/[^0-9.]/g, "");
+  const [integerPart = "", ...decimalParts] = normalized.split(".");
+  const decimalPart = decimalParts.join("");
+  const integerWithoutLeadingZero = integerPart.replace(/^0+(?=\d)/, "");
+
+  if (decimalParts.length > 0) {
+    return `${integerWithoutLeadingZero || "0"}.${decimalPart}`;
+  }
+
+  return integerWithoutLeadingZero;
+};
 
 function EditShell({
   title,
@@ -584,10 +600,14 @@ export function QuotationEditScreen() {
                   <input
                     name={`q-quantity-${index}`}
                     className="inline-input"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    defaultValue={item.quantity}
+                    type="text"
+                    inputMode="decimal"
+                    defaultValue={decimalText(item.quantity)}
+                    placeholder="Qty"
+                    onFocus={(event) => event.currentTarget.select()}
+                    onChange={(event) => {
+                      event.currentTarget.value = normalizeDecimalInput(event.currentTarget.value);
+                    }}
                   />
                 </td>
                 {showSqm ? (
@@ -595,10 +615,14 @@ export function QuotationEditScreen() {
                     <input
                       name={`q-sqm-${index}`}
                       className="inline-input"
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      defaultValue={item.sqm ?? 0}
+                      type="text"
+                      inputMode="decimal"
+                      defaultValue={decimalText(item.sqm)}
+                      placeholder="SQM"
+                      onFocus={(event) => event.currentTarget.select()}
+                      onChange={(event) => {
+                        event.currentTarget.value = normalizeDecimalInput(event.currentTarget.value);
+                      }}
                     />
                   </td>
                 ) : null}
@@ -606,21 +630,28 @@ export function QuotationEditScreen() {
                   <input
                     name={`q-price-${index}`}
                     className="inline-input"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    defaultValue={item.unitPrice}
+                    type="text"
+                    inputMode="decimal"
+                    defaultValue={decimalText(item.unitPrice)}
+                    placeholder="Unit price"
+                    onFocus={(event) => event.currentTarget.select()}
+                    onChange={(event) => {
+                      event.currentTarget.value = normalizeDecimalInput(event.currentTarget.value);
+                    }}
                   />
                 </td>
                 <td>
                   <input
                     name={`q-vat-${index}`}
                     className="inline-input"
-                    type="number"
-                    min="0"
-                    max="100"
-                    step="0.01"
-                    defaultValue={item.vatRate}
+                    type="text"
+                    inputMode="decimal"
+                    defaultValue={decimalText(item.vatRate)}
+                    placeholder="VAT %"
+                    onFocus={(event) => event.currentTarget.select()}
+                    onChange={(event) => {
+                      event.currentTarget.value = normalizeDecimalInput(event.currentTarget.value);
+                    }}
                   />
                 </td>
                 <td>{item.vatAmount.toFixed(2)}</td>
