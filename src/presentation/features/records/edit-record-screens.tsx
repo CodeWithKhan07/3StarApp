@@ -408,6 +408,7 @@ export function QuotationEditScreen() {
   const record = data.quotations.find((item) => item.id === id);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [showSqm, setShowSqm] = useState(Boolean(record?.showSqm));
   if (!record) return <MissingRecord backHref={routes.quotations} />;
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -419,6 +420,7 @@ export function QuotationEditScreen() {
             serialNo: 1,
             description: record!.scopeOfWork,
             quantity: 1,
+            sqm: 0,
             unitPrice: record!.subTotal ?? record!.amount,
             amount: record!.subTotal ?? record!.amount,
             vatRate: record!.vatRate ?? data.company.vatRate,
@@ -434,6 +436,7 @@ export function QuotationEditScreen() {
         ...item,
         description: text(f, `q-description-${index}`),
         quantity,
+        sqm: showSqm ? number(f, `q-sqm-${index}`) : undefined,
         unitPrice,
         amount,
         vatRate,
@@ -448,17 +451,20 @@ export function QuotationEditScreen() {
       await updateRecord("quotations", {
         ...record!,
         issueDate: text(f, "issueDate"),
-        validityDate: text(f, "validityDate"),
+        validityDate: "",
         companyName: text(f, "companyName"),
         store: text(f, "store"),
-        scopeOfWork: text(f, "scopeOfWork"),
+        scopeOfWork:
+          lineItems.find((item) => item.description.trim())?.description.trim() ||
+          "",
         amount: subTotal + vatAmount,
-        followUpDate: text(f, "followUpDate"),
-        remarks: text(f, "remarks"),
-        customerVatNumber: text(f, "customerVatNumber"),
-        customerAddress: text(f, "customerAddress"),
+        followUpDate: "",
+        customerAddress: undefined,
+        customerVatNumber: undefined,
+        remarks: undefined,
+        termsAndConditions: undefined,
         currency: text(f, "currency") || data.company.currency,
-        termsAndConditions: text(f, "termsAndConditions"),
+        showSqm,
         lineItems,
         subTotal,
         vatAmount,
@@ -508,16 +514,8 @@ export function QuotationEditScreen() {
           <input name="store" defaultValue={record.store} />
         </label>
         <label className="field">
-          <span>Issue Date</span>
+          <span>Date</span>
           <input name="issueDate" type="date" defaultValue={record.issueDate} />
-        </label>
-        <label className="field">
-          <span>Validity Date</span>
-          <input
-            name="validityDate"
-            type="date"
-            defaultValue={record.validityDate}
-          />
         </label>
         <label className="field">
           <span>Amount</span>
@@ -530,49 +528,19 @@ export function QuotationEditScreen() {
           />
         </label>
         <label className="field">
-          <span>Customer VAT Number</span>
-          <input
-            name="customerVatNumber"
-            defaultValue={record.customerVatNumber}
-          />
-        </label>
-        <label className="field">
           <span>Currency</span>
           <input
             name="currency"
             defaultValue={record.currency || data.company.currency}
           />
         </label>
-        <label className="field field--full">
-          <span>Customer Address</span>
-          <input name="customerAddress" defaultValue={record.customerAddress} />
-        </label>
-        <label className="field">
-          <span>Follow-up Date</span>
+        <label className="field sqm-toggle">
+          <span>SQM</span>
           <input
-            name="followUpDate"
-            type="date"
-            defaultValue={record.followUpDate}
+            type="checkbox"
+            checked={showSqm}
+            onChange={(event) => setShowSqm(event.target.checked)}
           />
-        </label>
-        <label className="field field--full">
-          <span>Scope of Work *</span>
-          <textarea
-            name="scopeOfWork"
-            defaultValue={record.scopeOfWork}
-            required
-          />
-        </label>
-        <label className="field field--full">
-          <span>Terms & Conditions</span>
-          <textarea
-            name="termsAndConditions"
-            defaultValue={record.termsAndConditions}
-          />
-        </label>
-        <label className="field field--full">
-          <span>Remarks</span>
-          <textarea name="remarks" defaultValue={record.remarks} />
         </label>
       </div>
       <div className="table-wrap">
@@ -582,6 +550,7 @@ export function QuotationEditScreen() {
               <th>#</th>
               <th>Description</th>
               <th>Qty</th>
+              {showSqm ? <th>SQM</th> : null}
               <th>Unit Price</th>
               <th>VAT %</th>
               <th>VAT</th>
@@ -621,6 +590,18 @@ export function QuotationEditScreen() {
                     defaultValue={item.quantity}
                   />
                 </td>
+                {showSqm ? (
+                  <td>
+                    <input
+                      name={`q-sqm-${index}`}
+                      className="inline-input"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      defaultValue={item.sqm ?? 0}
+                    />
+                  </td>
+                ) : null}
                 <td>
                   <input
                     name={`q-price-${index}`}

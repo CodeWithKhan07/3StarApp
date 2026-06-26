@@ -81,6 +81,7 @@ export interface Quotation {
   vatAmount?: number;
   termsAndConditions?: string;
   storeLocation?: string;
+  showSqm?: boolean;
   supplierBusinessName?: string;
   supplierLegalName?: string;
   supplierCrNumber?: string;
@@ -94,6 +95,7 @@ export interface Quotation {
     serialNo: number;
     description: string;
     quantity: number;
+    sqm?: number;
     unitPrice: number;
     amount: number;
     vatRate: number;

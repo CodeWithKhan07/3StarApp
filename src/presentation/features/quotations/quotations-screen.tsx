@@ -11,7 +11,11 @@ import {
 import { exportQuotationPdf } from "@/application/services/document-export";
 import type { BusinessDataSet } from "@/domain/entities/business";
 import { routes } from "@/lib/routes";
-import { createQuotationSerial, ensureQuotationSerial } from "@/lib/record-ids";
+import {
+  createNextQuotationId,
+  createQuotationSerial,
+  ensureQuotationSerial,
+} from "@/lib/record-ids";
 import {
   EmptyTableRow,
   PageHeader,
@@ -112,7 +116,6 @@ function normalizeQuotation(quotation: Quotation) {
       readFirstString(record, ["serialNumber"], "")
     ),
     issueDate: readFirstString(record, ["issueDate"], ""),
-    validityDate: readFirstString(record, ["validityDate"], ""),
     companyName: readFirstString(
       record,
       ["companyName", "company"],
@@ -132,7 +135,7 @@ function normalizeQuotation(quotation: Quotation) {
 }
 
 function createPatchedQuotation(quotation: Quotation, patch: Partial<ReturnType<typeof normalizeQuotation>>): Quotation {
-  return { ...quotation, issueDate: patch.issueDate ?? quotation.issueDate, validityDate: patch.validityDate ?? quotation.validityDate, companyName: patch.companyName ?? quotation.companyName, store: patch.store ?? quotation.store, scopeOfWork: patch.scopeOfWork ?? quotation.scopeOfWork, amount: patch.amount ?? quotation.amount, status: patch.status ?? quotation.status, followUpDate: patch.followUpDate ?? quotation.followUpDate, remarks: patch.remarks ?? quotation.remarks };
+  return { ...quotation, issueDate: patch.issueDate ?? quotation.issueDate, validityDate: "", companyName: patch.companyName ?? quotation.companyName, store: patch.store ?? quotation.store, scopeOfWork: patch.scopeOfWork ?? quotation.scopeOfWork, amount: patch.amount ?? quotation.amount, status: patch.status ?? quotation.status, followUpDate: "", remarks: patch.remarks ?? quotation.remarks };
 }
 
 export function QuotationsScreen() {
@@ -158,8 +161,9 @@ export function QuotationsScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importDraft, setImportDraft] = useState<QuotationImportDraft | null>(null);
+  const [showSqm, setShowSqm] = useState(false);
   const [lineItems, setLineItems] = useState<QuotationLineItem[]>([
-    { serialNo: 1, description: "", quantity: 1, unitPrice: 0, amount: 0, vatRate: data.company.vatRate, vatAmount: 0 },
+    { serialNo: 1, description: "", quantity: 1, sqm: 0, unitPrice: 0, amount: 0, vatRate: data.company.vatRate, vatAmount: 0 },
   ]);
   const [invoiceImportDraft, setInvoiceImportDraft] = useState<InvoiceImportDraft | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -186,6 +190,10 @@ export function QuotationsScreen() {
     return data.quotations.map(normalizeQuotation);
   }, [data.quotations]);
 
+  const nextQuotationId = useMemo(() => {
+    return createNextQuotationId(data.quotations.map((quotation) => quotation.id));
+  }, [data.quotations]);
+
   const clientOptions = useMemo(() => {
     return data.clients
       .map((client) => readFirstString(asRecord(client), ["companyName", "company", "name"], ""))
@@ -208,9 +216,7 @@ export function QuotationsScreen() {
         quotation.serialNumber,
         quotation.companyName,
         quotation.store,
-        quotation.scopeOfWork,
         quotation.status,
-        quotation.remarks,
         quotation.amount,
         quotation.issueDate,
       ]
@@ -294,18 +300,44 @@ export function QuotationsScreen() {
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
+    const formElement = event.currentTarget;
     const form = new FormData(event.currentTarget);
+    const quotationNo = String(form.get("id") || "").trim();
     const companyName = String(form.get("companyName") || "").trim();
-    const scopeOfWork = String(form.get("scopeOfWork") || "").trim();
-    const amount = quotationTotals.total;
+    const store = String(form.get("store") || "").trim();
+    const issueDate = String(form.get("issueDate") || "").trim();
+    const currency = String(form.get("currency") || "").trim();
+    const scopeOfWork =
+      lineItems.find((item) => item.description.trim())?.description.trim() ||
+      "";
+    const validLineItems = lineItems.filter(
+      (item) =>
+        item.description.trim() &&
+        Number(item.quantity) > 0 &&
+        Number(item.unitPrice) > 0,
+    );
+    const savedLineItems = validLineItems.map((item, index) => ({
+      ...item,
+      serialNo: index + 1,
+      description: item.description.trim(),
+      sqm: showSqm ? Number(item.sqm) || 0 : undefined,
+    }));
+    const subTotal = savedLineItems.reduce((sum, item) => sum + item.amount, 0);
+    const vatAmount = savedLineItems.reduce((sum, item) => sum + item.vatAmount, 0);
 
-    if (!companyName) {
-      setFormError("Company name is required.");
+    if (
+      !quotationNo ||
+      !companyName ||
+      !store ||
+      !issueDate ||
+      !currency
+    ) {
+      setFormError("Fill every quotation field before saving.");
       return;
     }
 
-    if (!scopeOfWork) {
-      setFormError("Scope of work is required.");
+    if (!validLineItems.length) {
+      setFormError("Add at least one product with description, quantity, and unit price.");
       return;
     }
 
@@ -313,34 +345,29 @@ export function QuotationsScreen() {
     setFormError("");
 
     const quotation: Quotation = {
-      id:
-        String(form.get("id") || "").trim() ||
-        `QT-${String(data.quotations.length + 1).padStart(5, "0")}`,
+      id: quotationNo,
       serialNumber: createQuotationSerial(),
-      issueDate: String(form.get("issueDate") || today()),
-      validityDate: String(form.get("validityDate") || ""),
+      issueDate,
+      validityDate: "",
       companyName,
-      store: String(form.get("store") || "").trim(),
+      store,
       scopeOfWork,
-      amount,
-      currency: String(form.get("currency") || data.company.currency || "SAR").trim(),
-      customerVatNumber: String(form.get("customerVatNumber") || "").trim(),
-      customerAddress: String(form.get("customerAddress") || "").trim(),
-      subTotal: quotationTotals.subTotal,
-      vatRate: lineItems[0]?.vatRate ?? data.company.vatRate,
-      vatAmount: quotationTotals.vatAmount,
-      lineItems,
-      termsAndConditions: String(form.get("termsAndConditions") || "").trim(),
+      amount: subTotal + vatAmount,
+      currency,
+      subTotal,
+      vatRate: savedLineItems[0]?.vatRate ?? data.company.vatRate,
+      vatAmount,
+      lineItems: savedLineItems,
+      showSqm,
       status: "draft",
-      followUpDate: String(form.get("followUpDate") || ""),
-      remarks: String(form.get("remarks") || "").trim(),
+      followUpDate: "",
     };
 
     try {
       await createQuotation(quotation);
       setShowForm(false);
       setImportDraft(null);
-      event.currentTarget.reset();
+      formElement.reset();
     } catch (caughtError) {
       setFormError(
         caughtError instanceof Error
@@ -364,8 +391,10 @@ export function QuotationsScreen() {
         serialNo: index + 1,
         vatRate: parsed.vatRate,
         vatAmount: item.amount * parsed.vatRate / 100,
+        sqm: 0,
       }));
       setLineItems(importedLines);
+      setShowSqm(false);
       setImportDraft(parsed);
       setShowForm(true);
     } catch (quotationError) {
@@ -438,7 +467,8 @@ export function QuotationsScreen() {
               type="button"
               onClick={() => {
                 setImportDraft(null);
-                setLineItems([{ serialNo: 1, description: "", quantity: 1, unitPrice: 0, amount: 0, vatRate: data.company.vatRate, vatAmount: 0 }]);
+                setShowSqm(false);
+                setLineItems([{ serialNo: 1, description: "", quantity: 1, sqm: 0, unitPrice: 0, amount: 0, vatRate: data.company.vatRate, vatAmount: 0 }]);
                 setFormError("");
                 setShowForm((value) => !value);
               }}
@@ -474,7 +504,7 @@ export function QuotationsScreen() {
           <div className="form-grid">
             <label className="field">
               <span>Quotation No.</span>
-              <input name="id" defaultValue={importDraft?.id} placeholder="Generated automatically" />
+              <input name="id" defaultValue={importDraft?.id || nextQuotationId} required />
             </label>
 
             <label className="field">
@@ -484,6 +514,7 @@ export function QuotationsScreen() {
                 list="quotation-clients-list"
                 placeholder="Company / client name"
                 defaultValue={importDraft?.companyName}
+                required
               />
               <datalist id="quotation-clients-list">
                 {clientOptions.map((name) => (
@@ -494,17 +525,12 @@ export function QuotationsScreen() {
 
             <label className="field">
               <span>Store / Branch</span>
-              <input name="store" placeholder="Store or branch" defaultValue={importDraft?.store} />
+              <input name="store" placeholder="Store or branch" defaultValue={importDraft?.store} required />
             </label>
 
             <label className="field">
-              <span>Issue Date</span>
-              <input name="issueDate" type="date" defaultValue={importDraft?.issueDate || today()} />
-            </label>
-
-            <label className="field">
-              <span>Validity Date</span>
-              <input name="validityDate" type="date" defaultValue={importDraft?.validityDate} />
+              <span>Date</span>
+              <input name="issueDate" type="date" defaultValue={importDraft?.issueDate || today()} required />
             </label>
 
             <label className="field">
@@ -512,43 +538,34 @@ export function QuotationsScreen() {
               <input name="amount" type="number" min="0" step="0.01" value={quotationTotals.total.toFixed(2)} readOnly />
             </label>
 
-            <label className="field"><span>Customer VAT Number</span><input name="customerVatNumber" inputMode="numeric" /></label>
-            <label className="field"><span>Currency</span><input name="currency" defaultValue={importDraft?.currency || data.company.currency || "SAR"} /></label>
-            <label className="field field--full"><span>Customer Address</span><input name="customerAddress" /></label>
-
-            <label className="field">
-              <span>Follow-up Date</span>
-              <input name="followUpDate" type="date" defaultValue={importDraft?.followUpDate} />
+            <label className="field"><span>Currency</span><input name="currency" defaultValue={importDraft?.currency || data.company.currency || "SAR"} required /></label>
+            <label className="field sqm-toggle">
+              <span>SQM</span>
+              <input
+                type="checkbox"
+                checked={showSqm}
+                onChange={(event) => setShowSqm(event.target.checked)}
+              />
             </label>
 
-            <label className="field field--full">
-              <span>Scope of Work *</span>
-              <textarea name="scopeOfWork" rows={3} placeholder="Describe the quotation scope" defaultValue={importDraft?.scopeOfWork} />
-            </label>
-
-            <label className="field field--full">
-              <span>Remarks</span>
-              <textarea name="remarks" rows={2} placeholder="Internal notes" defaultValue={importDraft?.remarks} />
-            </label>
-
-            <label className="field field--full"><span>Terms & Conditions</span><textarea name="termsAndConditions" rows={3} defaultValue={importDraft?.termsAndConditions} /></label>
           </div>
 
           <div className="table-wrap">
             <table className="data-table project-line-items">
-              <thead><tr><th>#</th><th>Description</th><th>Qty</th><th>Unit Price</th><th>VAT %</th><th>VAT</th><th>Line Total</th><th /></tr></thead>
+              <thead><tr><th>#</th><th>Description</th><th>Qty</th>{showSqm ? <th>SQM</th> : null}<th>Unit Price</th><th>VAT %</th><th>VAT</th><th>Line Total</th><th /></tr></thead>
               <tbody>{lineItems.map((item, index) => <tr key={index}>
                 <td>{index + 1}</td>
-                <td><textarea className="inline-input inline-input--wide" value={item.description} onChange={(event) => updateLineItem(index, { description: event.target.value })} /></td>
-                <td><input className="inline-input" type="number" min="0" step="0.01" value={item.quantity} onChange={(event) => updateLineItem(index, { quantity: toNumber(event.target.value) })} /></td>
-                <td><input className="inline-input" type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updateLineItem(index, { unitPrice: toNumber(event.target.value) })} /></td>
-                <td><input className="inline-input" type="number" min="0" max="100" step="0.01" value={item.vatRate} onChange={(event) => updateLineItem(index, { vatRate: toNumber(event.target.value) })} /></td>
+                <td><textarea className="inline-input inline-input--wide" value={item.description} required onChange={(event) => updateLineItem(index, { description: event.target.value })} /></td>
+                <td><input className="inline-input" type="number" min="0.01" step="0.01" value={item.quantity} required onChange={(event) => updateLineItem(index, { quantity: toNumber(event.target.value) })} /></td>
+                {showSqm ? <td><input className="inline-input" type="number" min="0" step="0.01" value={item.sqm ?? 0} onChange={(event) => updateLineItem(index, { sqm: toNumber(event.target.value) })} /></td> : null}
+                <td><input className="inline-input" type="number" min="0.01" step="0.01" value={item.unitPrice} required onChange={(event) => updateLineItem(index, { unitPrice: toNumber(event.target.value) })} /></td>
+                <td><input className="inline-input" type="number" min="0" max="100" step="0.01" value={item.vatRate} required onChange={(event) => updateLineItem(index, { vatRate: toNumber(event.target.value) })} /></td>
                 <td>{money(item.vatAmount)}</td><td>{money(item.amount + item.vatAmount)}</td>
                 <td><button className="icon-button icon-button--danger" type="button" disabled={lineItems.length === 1} onClick={() => setLineItems((items) => items.filter((_, itemIndex) => itemIndex !== index).map((entry, itemIndex) => ({ ...entry, serialNo: itemIndex + 1 })))}><Trash2 size={15} /></button></td>
               </tr>)}</tbody>
             </table>
           </div>
-          <div className="form-actions"><span>Subtotal: {money(quotationTotals.subTotal)} · VAT: {money(quotationTotals.vatAmount)}</span><button className="button" type="button" onClick={() => setLineItems((items) => [...items, { serialNo: items.length + 1, description: "", quantity: 1, unitPrice: 0, amount: 0, vatRate: data.company.vatRate, vatAmount: 0 }])}><Plus size={14} />Add Item</button></div>
+          <div className="form-actions"><span>Subtotal: {money(quotationTotals.subTotal)} · VAT: {money(quotationTotals.vatAmount)}</span><button className="button" type="button" onClick={() => setLineItems((items) => [...items, { serialNo: items.length + 1, description: "", quantity: 1, sqm: 0, unitPrice: 0, amount: 0, vatRate: data.company.vatRate, vatAmount: 0 }])}><Plus size={14} />Add Item</button></div>
 
           {formError ? (
             <div className="form-message form-message--error">{formError}</div>
@@ -583,7 +600,7 @@ export function QuotationsScreen() {
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search quotation, company, serial no, branch, scope, amount..."
+            placeholder="Search quotation, company, serial no, branch, amount..."
           />
         </label>
 
@@ -661,14 +678,11 @@ export function QuotationsScreen() {
               <tr>
                 <th>Quotation No</th>
                 <th>Serial No</th>
-                <th>Issue Date</th>
+                <th>Date</th>
                 <th>Company</th>
                 <th>Store / Branch</th>
-                <th>Scope of Work</th>
                 <th>Amount</th>
                 <th>Status</th>
-                <th>Follow-up</th>
-                <th>Remarks</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -724,21 +738,6 @@ export function QuotationsScreen() {
                         )}
                       </td>
 
-                      <td>
-                        {isEditing ? (
-                          <input
-                            className="inline-input inline-input--wide"
-                            value={draft.scopeOfWork}
-                            onChange={(event) =>
-                              updateDraft("scopeOfWork", event.target.value)
-                            }
-                          />
-                        ) : (
-                          <span className="description-cell">
-                            {quotation.scopeOfWork || "—"}
-                          </span>
-                        )}
-                      </td>
 
                       <td className="money-cell">
                         {isEditing ? (
@@ -785,32 +784,7 @@ export function QuotationsScreen() {
                         ) : null}
                       </td>
 
-                      <td>
-                        {isEditing ? (
-                          <input
-                            className="inline-input"
-                            type="date"
-                            value={draft.followUpDate}
-                            onChange={(event) =>
-                              updateDraft("followUpDate", event.target.value)
-                            }
-                          />
-                        ) : (
-                          quotation.followUpDate || "—"
-                        )}
-                      </td>
 
-                      <td>
-                        {isEditing ? (
-                          <input
-                            className="inline-input inline-input--wide"
-                            value={draft.remarks}
-                            onChange={(event) => updateDraft("remarks", event.target.value)}
-                          />
-                        ) : (
-                          quotation.remarks || "—"
-                        )}
-                      </td>
 
                       <td>
                         <div className="row-actions">
@@ -878,7 +852,7 @@ export function QuotationsScreen() {
                 })
               ) : (
                 <EmptyTableRow
-                  columns={11}
+                  columns={8}
                   message="No quotations found. Click New Quotation or import your old Excel workbook."
                 />
               )}
@@ -918,10 +892,6 @@ export function QuotationsScreen() {
                         </header>
 
                         <dl>
-                          <div className="mobile-field-wide">
-                            <dt>Job / Scope</dt>
-                            <dd>{quotation.scopeOfWork || "—"}</dd>
-                          </div>
                           <div>
                             <dt>Quotation No</dt>
                             <dd>{quotation.id}</dd>
@@ -929,10 +899,6 @@ export function QuotationsScreen() {
                           <div>
                             <dt>Amount</dt>
                             <dd>{money(quotation.amount)}</dd>
-                          </div>
-                          <div>
-                            <dt>Follow-up</dt>
-                            <dd>{quotation.followUpDate || "—"}</dd>
                           </div>
                           <div>
                             <dt>Invoice</dt>
