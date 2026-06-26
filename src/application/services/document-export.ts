@@ -204,14 +204,8 @@ export async function exportQuotationPdf(
       quotation.subTotal ??
       quotation.lineItems?.reduce((sum, item) => sum + item.amount, 0) ??
       quotation.amount / (1 + baseRate / 100);
-    const vat =
-      quotation.vatAmount ??
-      quotation.lineItems?.reduce(
-        (sum, item) =>
-          sum + (item.vatAmount ?? (item.amount * item.vatRate) / 100),
-        0,
-      ) ??
-      quotation.amount - subtotal;
+    const vat = (subtotal * baseRate) / 100;
+    const totalAmount = subtotal + vat;
     const lines = quotation.lineItems?.length
       ? quotation.lineItems
       : [
@@ -247,7 +241,7 @@ export async function exportQuotationPdf(
       <div class="band details-title">QUOTATION DETAILS</div>
       <div class="details"><table class="detail-table"><tbody><tr><td>Date</td><td>${escapeHtml(quoteDate)}</td></tr><tr><td>Quotation No.</td><td>${escapeHtml(quotation.id)}</td></tr><tr><td>Company Name</td><td>${escapeHtml(quotation.companyName)}</td></tr><tr><td>Store Name</td><td>${escapeHtml(quotation.store || "")}</td></tr></tbody></table><div class="qrbox"><div class="qr-crop"><img src="${quotationStaticQr.src}" alt="Quotation QR"></div></div></div>
       <table class="items${sqmTableClass}"><thead><tr><th class="c-serial">Sr. No.</th><th class="c-desc">Description of Work / Item</th><th class="c-qty">QTY</th>${sqmHeader}<th class="c-price">Unit Price (${escapeHtml(currency)})</th><th class="c-amount">Amount (${escapeHtml(currency)})</th></tr></thead><tbody>${rows}</tbody></table>
-      <div class="totals"><div class="total-row"><div class="total-label">Sub-Total :</div><div class="total-value">${amount(subtotal)} ${escapeHtml(currency)}</div></div><div class="total-row"><div class="total-label">VAT (${amount(baseRate).replace(/\.00$/, "")}%) :</div><div class="total-value">${amount(vat)} ${escapeHtml(currency)}</div></div><div class="total-row"><div class="total-label grand-label">★TOTAL AMOUNT (Including VAT ${amount(baseRate).replace(/\.00$/, "")}%) :</div><div class="total-value grand-value">${amount(quotation.amount)} ${escapeHtml(currency)}</div></div></div>
+      <div class="totals"><div class="total-row"><div class="total-label">Sub-Total :</div><div class="total-value">${amount(subtotal)} ${escapeHtml(currency)}</div></div><div class="total-row"><div class="total-label">VAT (${amount(baseRate).replace(/\.00$/, "")}%) :</div><div class="total-value">${amount(vat)} ${escapeHtml(currency)}</div></div><div class="total-row"><div class="total-label grand-label">★TOTAL AMOUNT (Including VAT ${amount(baseRate).replace(/\.00$/, "")}%) :</div><div class="total-value grand-value">${amount(totalAmount)} ${escapeHtml(currency)}</div></div></div>
       <div class="footer-main">${escapeHtml(company.businessName || "3 Star Automatic Door & Maintenance Works")} — ${escapeHtml(company.city)}, ${escapeHtml(company.country)}</div>
       <div class="footer-contact"><span>Mobile: ${escapeHtml(company.phone)}</span><span>|</span><span>Email: ${escapeHtml(profile.email || "Ksajjad324@gmail.com")}</span><span>|</span><span>${escapeHtml(profile.website || "https://3starmaintenance.base44.app/")}</span></div>
       <div class="footer-special">Specialized in: Automatic Doors · Rolling Shutters · Glass Works · Signage · Cladding · Painting · Civil Works · AMC Services</div>

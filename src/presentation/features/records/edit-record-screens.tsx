@@ -425,6 +425,9 @@ export function QuotationEditScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [showSqm, setShowSqm] = useState(Boolean(record?.showSqm));
+  const [vatRate, setVatRate] = useState(
+    decimalText(record?.vatRate ?? data.company.vatRate) || "15"
+  );
   if (!record) return <MissingRecord backHref={routes.quotations} />;
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -446,7 +449,7 @@ export function QuotationEditScreen() {
     const lineItems = source.map((item, index) => {
       const quantity = number(f, `q-quantity-${index}`);
       const unitPrice = number(f, `q-price-${index}`);
-      const vatRate = number(f, `q-vat-${index}`);
+      const quotationVatRate = number(f, "vatRate");
       const amount = quantity * unitPrice;
       return {
         ...item,
@@ -455,12 +458,13 @@ export function QuotationEditScreen() {
         sqm: showSqm ? number(f, `q-sqm-${index}`) : undefined,
         unitPrice,
         amount,
-        vatRate,
-        vatAmount: (amount * vatRate) / 100,
+        vatRate: quotationVatRate,
+        vatAmount: (amount * quotationVatRate) / 100,
       };
     });
     const subTotal = lineItems.reduce((sum, item) => sum + item.amount, 0);
-    const vatAmount = lineItems.reduce((sum, item) => sum + item.vatAmount, 0);
+    const quotationVatRate = number(f, "vatRate");
+    const vatAmount = (subTotal * quotationVatRate) / 100;
     setSaving(true);
     setError("");
     try {
@@ -484,7 +488,7 @@ export function QuotationEditScreen() {
         lineItems,
         subTotal,
         vatAmount,
-        vatRate: lineItems[0]?.vatRate ?? data.company.vatRate,
+        vatRate: quotationVatRate,
       });
       router.replace(routes.quotations);
     } catch (e) {
@@ -550,6 +554,19 @@ export function QuotationEditScreen() {
             defaultValue={record.currency || data.company.currency}
           />
         </label>
+        <label className="field">
+          <span>VAT Rate %</span>
+          <input
+            name="vatRate"
+            type="text"
+            inputMode="decimal"
+            value={vatRate}
+            placeholder="15"
+            required
+            onFocus={(event) => event.currentTarget.select()}
+            onChange={(event) => setVatRate(normalizeDecimalInput(event.currentTarget.value))}
+          />
+        </label>
         <label className="field sqm-toggle">
           <span>SQM</span>
           <input
@@ -568,8 +585,7 @@ export function QuotationEditScreen() {
               <th>Qty</th>
               {showSqm ? <th>SQM</th> : null}
               <th>Unit Price</th>
-              <th>VAT %</th>
-              <th>VAT</th>
+              <th>Amount</th>
             </tr>
           </thead>
           <tbody>
@@ -640,21 +656,7 @@ export function QuotationEditScreen() {
                     }}
                   />
                 </td>
-                <td>
-                  <input
-                    name={`q-vat-${index}`}
-                    className="inline-input"
-                    type="text"
-                    inputMode="decimal"
-                    defaultValue={decimalText(item.vatRate)}
-                    placeholder="VAT %"
-                    onFocus={(event) => event.currentTarget.select()}
-                    onChange={(event) => {
-                      event.currentTarget.value = normalizeDecimalInput(event.currentTarget.value);
-                    }}
-                  />
-                </td>
-                <td>{item.vatAmount.toFixed(2)}</td>
+                <td>{item.amount.toFixed(2)}</td>
               </tr>
             ))}
           </tbody>

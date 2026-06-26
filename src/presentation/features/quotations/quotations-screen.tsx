@@ -99,8 +99,7 @@ function moneyOrEmpty(value: number) {
 }
 
 function emptyLineItem(
-  serialNo: number,
-  defaultVatRate = 15
+  serialNo: number
 ): QuotationLineItemDraft {
   return {
     serialNo,
@@ -109,7 +108,7 @@ function emptyLineItem(
     sqm: "",
     unitPrice: "",
     amount: 0,
-    vatRate: numberToInputText(defaultVatRate),
+    vatRate: "",
     vatAmount: 0,
   };
 }
@@ -239,8 +238,11 @@ export function QuotationsScreen() {
   const [importing, setImporting] = useState(false);
   const [importDraft, setImportDraft] = useState<QuotationImportDraft | null>(null);
   const [showSqm, setShowSqm] = useState(false);
+  const [vatRate, setVatRate] = useState(
+    numberToInputText(data.company.vatRate) || "15"
+  );
   const [lineItems, setLineItems] = useState<QuotationLineItemDraft[]>([
-    emptyLineItem(1, data.company.vatRate),
+    emptyLineItem(1),
   ]);
   const [invoiceImportDraft, setInvoiceImportDraft] = useState<InvoiceImportDraft | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -249,9 +251,9 @@ export function QuotationsScreen() {
 
   const quotationTotals = useMemo(() => {
     const subTotal = lineItems.reduce((sum, item) => sum + item.amount, 0);
-    const vatAmount = lineItems.reduce((sum, item) => sum + item.vatAmount, 0);
+    const vatAmount = (subTotal * toNumber(vatRate)) / 100;
     return { subTotal, vatAmount, total: subTotal + vatAmount };
-  }, [lineItems]);
+  }, [lineItems, vatRate]);
 
   function updateLineItem(index: number, patch: Partial<QuotationLineItemDraft>) {
     setLineItems((current) =>
@@ -261,10 +263,9 @@ export function QuotationsScreen() {
         const next = { ...item, ...patch };
         const quantity = toNumber(next.quantity);
         const unitPrice = toNumber(next.unitPrice);
-        const vatRate = toNumber(next.vatRate);
 
         next.amount = quantity * unitPrice;
-        next.vatAmount = (next.amount * vatRate) / 100;
+        next.vatAmount = 0;
 
         return next;
       })
@@ -405,9 +406,9 @@ export function QuotationsScreen() {
       (item, index) => {
         const quantity = toNumber(item.quantity);
         const unitPrice = toNumber(item.unitPrice);
-        const vatRate = toNumber(item.vatRate);
+        const itemVatRate = toNumber(vatRate);
         const amount = quantity * unitPrice;
-        const vatAmount = (amount * vatRate) / 100;
+        const vatAmount = (amount * itemVatRate) / 100;
 
         return {
           ...item,
@@ -417,20 +418,22 @@ export function QuotationsScreen() {
           sqm: showSqm ? toNumber(item.sqm) : undefined,
           unitPrice,
           amount,
-          vatRate,
+          vatRate: itemVatRate,
           vatAmount,
         };
       }
     );
     const subTotal = savedLineItems.reduce((sum, item) => sum + item.amount, 0);
-    const vatAmount = savedLineItems.reduce((sum, item) => sum + item.vatAmount, 0);
+    const itemVatRate = toNumber(vatRate);
+    const vatAmount = (subTotal * itemVatRate) / 100;
 
     if (
       !quotationNo ||
       !companyName ||
       !store ||
       !issueDate ||
-      !currency
+      !currency ||
+      !vatRate
     ) {
       setFormError("Fill every quotation field before saving.");
       return;
@@ -455,7 +458,7 @@ export function QuotationsScreen() {
       amount: subTotal + vatAmount,
       currency,
       subTotal,
-      vatRate: savedLineItems[0]?.vatRate ?? data.company.vatRate,
+      vatRate: itemVatRate,
       vatAmount,
       lineItems: savedLineItems,
       showSqm,
@@ -467,7 +470,7 @@ export function QuotationsScreen() {
       await createQuotation(quotation);
       setShowForm(false);
       setImportDraft(null);
-      setLineItems([emptyLineItem(1, data.company.vatRate)]);
+      setLineItems([emptyLineItem(1)]);
       formElement.reset();
     } catch (caughtError) {
       setFormError(
@@ -511,6 +514,7 @@ export function QuotationsScreen() {
       );
       setLineItems(importedLines);
       setShowSqm(false);
+      setVatRate(numberToInputText(parsed.vatRate) || numberToInputText(data.company.vatRate) || "15");
       setImportDraft(parsed);
       setShowForm(true);
     } catch (quotationError) {
@@ -592,7 +596,8 @@ export function QuotationsScreen() {
               onClick={() => {
                 setImportDraft(null);
                 setShowSqm(false);
-                setLineItems([emptyLineItem(1, data.company.vatRate)]);
+                setVatRate(numberToInputText(data.company.vatRate) || "15");
+                setLineItems([emptyLineItem(1)]);
                 setFormError("");
                 setShowForm((value) => !value);
               }}
@@ -670,6 +675,18 @@ export function QuotationsScreen() {
             </label>
 
             <label className="field"><span>Currency</span><input name="currency" defaultValue={importDraft?.currency || data.company.currency || "SAR"} required /></label>
+            <label className="field">
+              <span>VAT Rate %</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={vatRate}
+                placeholder="15"
+                required
+                onFocus={(event) => event.currentTarget.select()}
+                onChange={(event) => setVatRate(normalizeDecimalInput(event.target.value))}
+              />
+            </label>
             <label className="field sqm-toggle">
               <span>SQM</span>
               <input
@@ -683,20 +700,19 @@ export function QuotationsScreen() {
 
           <div className="table-wrap">
             <table className="data-table project-line-items">
-              <thead><tr><th>#</th><th>Description</th><th>Qty</th>{showSqm ? <th>SQM</th> : null}<th>Unit Price</th><th>VAT %</th><th>VAT</th><th>Line Total</th><th /></tr></thead>
+              <thead><tr><th>#</th><th>Description</th><th>Qty</th>{showSqm ? <th>SQM</th> : null}<th>Unit Price</th><th>Amount</th><th /></tr></thead>
               <tbody>{lineItems.map((item, index) => <tr key={index}>
                 <td>{index + 1}</td>
                 <td><textarea className="inline-input inline-input--wide" value={item.description} required onChange={(event) => updateLineItem(index, { description: event.target.value })} /></td>
                 <td><input className="inline-input" type="text" inputMode="decimal" value={item.quantity} placeholder="Qty" required onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateLineItem(index, { quantity: normalizeDecimalInput(event.target.value) })} /></td>
                 {showSqm ? <td><input className="inline-input" type="text" inputMode="decimal" value={item.sqm ?? ""} placeholder="SQM" onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateLineItem(index, { sqm: normalizeDecimalInput(event.target.value) })} /></td> : null}
                 <td><input className="inline-input" type="text" inputMode="decimal" value={item.unitPrice} placeholder="Unit price" required onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateLineItem(index, { unitPrice: normalizeDecimalInput(event.target.value) })} /></td>
-                <td><input className="inline-input" type="text" inputMode="decimal" value={item.vatRate} placeholder="VAT %" required onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateLineItem(index, { vatRate: normalizeDecimalInput(event.target.value) })} /></td>
-                <td>{moneyOrEmpty(item.vatAmount)}</td><td>{moneyOrEmpty(item.amount + item.vatAmount)}</td>
+                <td>{moneyOrEmpty(item.amount)}</td>
                 <td><button className="icon-button icon-button--danger" type="button" disabled={lineItems.length === 1} onClick={() => setLineItems((items) => items.filter((_, itemIndex) => itemIndex !== index).map((entry, itemIndex) => ({ ...entry, serialNo: itemIndex + 1 })))}><Trash2 size={15} /></button></td>
               </tr>)}</tbody>
             </table>
           </div>
-          <div className="form-actions"><span>Subtotal: {moneyOrEmpty(quotationTotals.subTotal) || "—"} · VAT: {moneyOrEmpty(quotationTotals.vatAmount) || "—"}</span><button className="button" type="button" onClick={() => setLineItems((items) => [...items, emptyLineItem(items.length + 1, data.company.vatRate)])}><Plus size={14} />Add Item</button></div>
+          <div className="form-actions"><span>Subtotal: {moneyOrEmpty(quotationTotals.subTotal) || "—"} · VAT ({vatRate || "0"}%): {moneyOrEmpty(quotationTotals.vatAmount) || "—"} · Total: {moneyOrEmpty(quotationTotals.total) || "—"}</span><button className="button" type="button" onClick={() => setLineItems((items) => [...items, emptyLineItem(items.length + 1)])}><Plus size={14} />Add Item</button></div>
 
           {formError ? (
             <div className="form-message form-message--error">{formError}</div>
