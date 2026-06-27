@@ -2,10 +2,6 @@
 
 import { exportQuotationPdf } from "@/application/services/document-export";
 import {
-  parseInvoiceDocument,
-  type InvoiceImportDraft,
-} from "@/application/services/invoice-import";
-import {
   parseQuotationDocument,
   type QuotationImportDraft,
 } from "@/application/services/quotation-import";
@@ -22,7 +18,6 @@ import {
   StatusBadge,
 } from "@/presentation/components/ui";
 import { money } from "@/presentation/data/sample-data";
-import { InvoiceDocumentModal } from "@/presentation/features/invoices/invoice-document-modal";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
 import {
   Check,
@@ -250,7 +245,6 @@ export function QuotationsScreen() {
   const [lineItems, setLineItems] = useState<QuotationLineItemDraft[]>([
     emptyLineItem(1),
   ]);
-  const [invoiceImportDraft, setInvoiceImportDraft] = useState<InvoiceImportDraft | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [editingId, setEditingId] = useState("");
   const [draft, setDraft] = useState<ReturnType<typeof normalizeQuotation> | null>(null);
@@ -571,19 +565,12 @@ export function QuotationsScreen() {
       setImportDraft(parsed);
       setShowForm(true);
     } catch (quotationError) {
-      try {
-        const invoice = await parseInvoiceDocument(file);
-        setShowForm(false);
-        setImportDraft(null);
-        setInvoiceImportDraft(invoice);
-      } catch {
-        setFormError(
-          quotationError instanceof Error
-            ? quotationError.message
-            : "The document could not be imported."
-        );
-        setShowForm(true);
-      }
+      setFormError(
+        quotationError instanceof Error
+          ? quotationError.message
+          : "The quotation document could not be imported."
+      );
+      setShowForm(true);
     } finally {
       setImporting(false);
     }
@@ -1246,12 +1233,6 @@ export function QuotationsScreen() {
         </div>
       </section>
 
-      {invoiceImportDraft ? (
-        <InvoiceDocumentModal
-          draft={invoiceImportDraft}
-          onClose={() => setInvoiceImportDraft(null)}
-        />
-      ) : null}
     </>
   );
 }

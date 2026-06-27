@@ -4,7 +4,7 @@ import type { InvoiceImportDraft } from "@/application/services/invoice-import";
 import type { Invoice } from "@/domain/entities/business";
 import { createNextInvoiceId } from "@/lib/record-ids";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
-import { Check, Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -13,7 +13,7 @@ const number = (value: FormDataEntryValue | null) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-export function InvoiceDocumentModal({
+export function InvoiceDocumentForm({
   draft,
   onClose,
 }: {
@@ -153,44 +153,12 @@ export function InvoiceDocumentModal({
   }
 
   return (
-    <div className="modal-backdrop" role="presentation" onClick={onClose}>
+    <div className="invoice-document-page-shell">
       <div
-        className="modal-card modal-card--wide invoice-document-modal card"
-        role="dialog"
-        aria-modal="true"
-        onClick={(event) => event.stopPropagation()}
+        className="invoice-document-page invoice-document-modal"
+        role="region"
+        aria-label="Invoice details"
       >
-        <header className="modal-card__header">
-          <div>
-            <h2>{draft ? "Review Imported Invoice" : "New Invoice Without Quotation"}</h2>
-            <p>
-              {draft
-                ? "Verify the extracted Excel/PDF values before saving."
-                : "Create an invoice without linking an in-app quotation."}
-            </p>
-          </div>
-          <div className="invoice-document-header-actions">
-            <button
-              className="icon-button icon-button--success"
-              type="submit"
-              form="invoice-document-form"
-              disabled={submitting}
-              aria-label="Save invoice"
-              title="Save invoice"
-            >
-              <Check size={18} />
-            </button>
-            <button
-              className="icon-button"
-              type="button"
-              onClick={onClose}
-              aria-label="Close"
-            >
-              <X size={17} />
-            </button>
-          </div>
-        </header>
-
         <form id="invoice-document-form" onSubmit={handleSubmit}>
           <div className="form-grid">
             <label className="field">
