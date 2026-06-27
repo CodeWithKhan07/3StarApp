@@ -187,6 +187,7 @@ export interface CompanyProfile {
   city: string;
   country: string;
   phone: string;
+  email?: string;
   currency: string;
   vatRate: number;
 }

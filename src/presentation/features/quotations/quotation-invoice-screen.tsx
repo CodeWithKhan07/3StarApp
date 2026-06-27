@@ -726,7 +726,11 @@ export function QuotationInvoiceScreen() {
                 <input
                   name="supplierEmail"
                   type="email"
-                  defaultValue={draft?.supplierEmail}
+                  defaultValue={
+                    draft?.supplierEmail ||
+                    data.company.email ||
+                    "ksajjad324@gmail.com"
+                  }
                 />
               </label>
               <label className="field field--full">

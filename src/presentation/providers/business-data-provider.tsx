@@ -112,6 +112,18 @@ interface BusinessDataContextValue {
 }
 
 const importedInitialData = workbook as unknown as BusinessDataSet;
+const defaultCompanyEmail = "ksajjad324@gmail.com";
+const legacyCompanyEmail = "shahzaibkhan3356@gmail.com";
+
+function normalizeCompanyEmail(value?: string) {
+  const email = value?.trim();
+  if (!email || email.toLowerCase() === legacyCompanyEmail) {
+    return defaultCompanyEmail;
+  }
+
+  return email;
+}
+
 const initialData: BusinessDataSet = {
   ...importedInitialData,
   quotations: importedInitialData.quotations.map((quotation) => ({
@@ -132,6 +144,10 @@ function preserveCompanyProfile(next: BusinessDataSet): BusinessDataSet {
       ...quotation,
       serialNumber: ensureQuotationSerial(quotation.id, quotation.serialNumber),
     })),
+    invoices: next.invoices.map((invoice) => ({
+      ...invoice,
+      supplierEmail: normalizeCompanyEmail(invoice.supplierEmail),
+    })),
     company: {
       businessName: keep(company.businessName, fallback.businessName),
       legalCompanyName: keep(
@@ -143,6 +159,7 @@ function preserveCompanyProfile(next: BusinessDataSet): BusinessDataSet {
       city: keep(company.city, fallback.city),
       country: keep(company.country, fallback.country),
       phone: keep(company.phone, fallback.phone),
+      email: normalizeCompanyEmail(company.email || fallback.email),
       currency: keep(company.currency, fallback.currency),
       vatRate: Number.isFinite(company.vatRate)
         ? company.vatRate
@@ -685,6 +702,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
         supplierAddress: `${data.company.city}, ${data.company.country}`,
         supplierCrNumber: data.company.crNumber,
         supplierVatNumber: data.company.vatNumber,
+        supplierEmail: normalizeCompanyEmail(data.company.email),
         currency: quotation.currency || data.company.currency,
         subTotal: quotation.subTotal,
         vatRate: quotation.vatRate ?? data.company.vatRate,
