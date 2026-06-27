@@ -2,13 +2,13 @@
 
 import { exportInvoicePdf } from "@/application/services/document-export";
 import { parseInvoiceDocument, type InvoiceImportDraft } from "@/application/services/invoice-import";
-import type { Invoice, Project } from "@/domain/entities/business";
+import type { Invoice, Project, Quotation } from "@/domain/entities/business";
 import { routes } from "@/lib/routes";
 import { EmptyTableRow, PageHeader, StatusBadge } from "@/presentation/components/ui";
 import { money } from "@/presentation/data/sample-data";
 import { InvoiceDocumentModal } from "@/presentation/features/invoices/invoice-document-modal";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
-import { Download, Edit3, FileUp, LoaderCircle, Plus, Search, Trash2 } from "lucide-react";
+import { Download, Edit3, FileUp, LoaderCircle, Plus, Search, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRef, useState, type ReactNode } from "react";
 
@@ -196,18 +196,97 @@ export function ClientsScreen() {
 }
 export function ProjectsScreen({status}:{status?:Project["status"]}){const {data}=useBusinessData();const [query,setQuery]=useState("");const source=status?data.projects.filter(item=>item.status===status):data.projects;const filtered=source.filter(item=>`${item.id} ${item.company} ${item.workDescription}`.toLowerCase().includes(query.toLowerCase()));const groupedProjects=Array.from(filtered.reduce((map,item)=>{const company=item.company?.trim()||"Unnamed Company";const list=map.get(company)||[];list.push(item);map.set(company,list);return map;},new Map<string,Project[]>()).entries()).map(([company,items])=>({company,items,total:items.reduce((sum,item)=>sum+item.value,0),completed:items.filter(item=>item.status==="completed").length}));const title=status==="in-progress"?"Ongoing Projects":status==="completed"?"Completed Projects":"Projects";return <><PageHeader title={title} description="Monitor projects; use the edit action for complete record changes."/><section className="card"><Toolbar query={query} onQuery={setQuery} placeholder="Search projects..."/><div className="table-wrap desktop-data-table"><table className="data-table mobile-projects-table"><thead><tr><th>ID</th><th>Company</th><th>Store</th><th>Description</th><th>Value</th><th>Completion</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filtered.length?filtered.map(project=><tr key={project.id}><td>{project.id}</td><td>{project.company}</td><td>{project.store}</td><td>{project.workDescription}</td><td>{money(project.value)}</td><td>{project.completion}%</td><td><StatusBadge value={project.status}/></td><td><Link className="icon-button" href={`${routes.editProject}?id=${encodeURIComponent(project.id)}`}><Edit3 size={15}/></Link></td></tr>):<EmptyTableRow columns={8}/>}</tbody></table></div><div className="mobile-card-list mobile-company-list">{groupedProjects.length?groupedProjects.map(group=><section className="mobile-company-card" key={group.company}><header><span>Company History</span><h3>{group.company}</h3><small>{group.items.length} job(s) · {group.completed} completed · Total {money(group.total)}</small></header><div className="mobile-company-card__records">{group.items.map(project=><article className="mobile-record-card" key={project.id}><header><div><span>Project</span><strong>{project.id}</strong><small>{project.startDate||"No date"} · {project.store||"No branch"}</small></div><StatusBadge value={project.status}/></header><dl><div><dt>Store</dt><dd>{project.store||"—"}</dd></div><div className="mobile-field-wide"><dt>Job / Description</dt><dd>{project.workDescription||"—"}</dd></div><div><dt>Value</dt><dd>{money(project.value)}</dd></div><div><dt>Completion</dt><dd>{project.completion}%</dd></div></dl><footer><Link className="button button--primary" href={`${routes.editProject}?id=${encodeURIComponent(project.id)}`}><Edit3 size={14}/>Edit Project</Link></footer></article>)}</div></section>):<div className="mobile-empty-state">No projects found.</div>}</div></section></>;}
 
+function InvoiceFlowModal({
+  quotations,
+  onStandalone,
+  onClose,
+}: {
+  quotations: Quotation[];
+  onStandalone: () => void;
+  onClose: () => void;
+}) {
+  const [quotationSerial, setQuotationSerial] = useState(
+    quotations[0]?.serialNumber || quotations[0]?.id || "",
+  );
+
+  return (
+    <div className="modal-backdrop invoice-flow-backdrop" role="presentation" onClick={onClose}>
+      <div
+        className="modal-card invoice-flow-modal card"
+        role="dialog"
+        aria-modal="true"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <header className="modal-card__header">
+          <div>
+            <h2>Create Invoice</h2>
+            <p>Choose whether this invoice is linked to a quotation in the app.</p>
+          </div>
+          <button className="icon-button" type="button" onClick={onClose} aria-label="Close">
+            <X size={17} />
+          </button>
+        </header>
+
+        <div className="form-grid">
+          <label className="field field--full">
+            <span>Existing Quotation</span>
+            <select
+              value={quotationSerial}
+              onChange={(event) => setQuotationSerial(event.target.value)}
+              disabled={!quotations.length}
+            >
+              {quotations.length ? (
+                quotations.map((quotation) => (
+                  <option
+                    key={quotation.serialNumber || quotation.id}
+                    value={quotation.serialNumber || quotation.id}
+                  >
+                    {quotation.id} - {quotation.companyName} - {money(quotation.amount)}
+                  </option>
+                ))
+              ) : (
+                <option value="">No quotations available</option>
+              )}
+            </select>
+          </label>
+        </div>
+
+        <div className="form-actions">
+          <button className="button" type="button" onClick={onStandalone}>
+            Standalone Invoice
+          </button>
+          {quotationSerial ? (
+            <Link
+              className="button button--primary"
+              href={`${routes.quotationInvoice}?serial=${encodeURIComponent(quotationSerial)}`}
+            >
+              Use Existing Quotation
+            </Link>
+          ) : (
+            <button className="button button--primary" type="button" disabled>
+              Use Existing Quotation
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function InvoicesScreen({pendingOnly=false}:{pendingOnly?:boolean}){
-  const {data,updateInvoiceStatus,completeInvoicePayment,deleteRecord}=useBusinessData();const [query,setQuery]=useState("");const [status,setStatus]=useState("all");const [modal,setModal]=useState(false);const [draft,setDraft]=useState<InvoiceImportDraft|null>(null);const [importing,setImporting]=useState(false);const [error,setError]=useState("");const input=useRef<HTMLInputElement|null>(null);
+  const {data,updateInvoiceStatus,completeInvoicePayment,deleteRecord}=useBusinessData();const [query,setQuery]=useState("");const [status,setStatus]=useState("all");const [modal,setModal]=useState(false);const [flowModal,setFlowModal]=useState(false);const [draft,setDraft]=useState<InvoiceImportDraft|null>(null);const [importing,setImporting]=useState(false);const [error,setError]=useState("");const input=useRef<HTMLInputElement|null>(null);
   const source=pendingOnly?data.invoices.filter(item=>["pending","partial","overdue"].includes(item.status)):data.invoices;const filtered=source.filter(item=>`${item.id} ${item.companyName} ${item.project}`.toLowerCase().includes(query.toLowerCase())&&(status==="all"||item.status===status));const total=source.reduce((sum,item)=>sum+item.amount,0);const received=source.reduce((sum,item)=>sum+item.received,0);
+  const availableQuotations=data.quotations.filter(quotation=>!data.invoices.some(invoice=>invoice.quotationSerialNumber===(quotation.serialNumber||quotation.id)||(!invoice.quotationSerialNumber&&invoice.quotationNo===quotation.id)));
   const groupedInvoices=Array.from(filtered.reduce((map,item)=>{const company=item.companyName?.trim()||"Unnamed Company";const list=map.get(company)||[];list.push(item);map.set(company,list);return map;},new Map<string,Invoice[]>()).entries()).map(([company,items])=>({company,items,total:items.reduce((sum,item)=>sum+item.amount,0),received:items.reduce((sum,item)=>sum+item.received,0)}));
   async function change(id:string,next:string){if(next==="paid")await completeInvoicePayment(id);else await updateInvoiceStatus(id,next as Invoice["status"]);}
   async function importFile(file?:File){if(!file)return;setImporting(true);setError("");try{setDraft(await parseInvoiceDocument(file));setModal(true);}catch(e){setError(e instanceof Error?e.message:"Invoice import failed.");}finally{setImporting(false);}}
   async function exportPdf(invoice:Invoice){setError("");try{await exportInvoicePdf(invoice,data.company);}catch(e){setError(e instanceof Error?e.message:"Invoice export failed.");}}
   function remove(invoice:Invoice){window.setTimeout(()=>{if(!window.confirm(`Delete invoice "${invoice.id}" for "${invoice.companyName}"?`))return;void deleteRecord("invoices",invoice.id).catch(e=>setError(e instanceof Error?e.message:"Invoice could not be deleted."));},0);}
-  return <><PageHeader title={pendingOnly?"Pending Payments":"Invoices & Payments"} description={pendingOnly?"Follow up outstanding balances.":"Create invoices and use a full page for record editing."} actions={!pendingOnly?<><button className="button" disabled={importing} onClick={()=>input.current?.click()}>{importing?<LoaderCircle className="spin" size={14}/>:<FileUp size={14}/>}Import Excel / PDF</button><button className="button button--primary" onClick={()=>{setDraft(null);setModal(true);}}><Plus size={14}/>New Invoice</button></>:undefined}/>
+  return <><PageHeader title={pendingOnly?"Pending Payments":"Invoices & Payments"} description={pendingOnly?"Follow up outstanding balances.":"Create linked or standalone invoices and manage payments."} actions={!pendingOnly?<><button className="button" disabled={importing} onClick={()=>input.current?.click()}>{importing?<LoaderCircle className="spin" size={14}/>:<FileUp size={14}/>}Import Excel / PDF</button><button className="button button--primary" onClick={()=>setFlowModal(true)}><Plus size={14}/>New Invoice</button></>:undefined}/>
     <input ref={input} className="file-input" type="file" accept=".pdf,.xlsx,.xls,.xlsm,.xlsb,.ods,.csv" onChange={event=>{const file=event.target.files?.[0];event.target.value="";void importFile(file);}}/>{error?<div className="form-message form-message--error">{error}</div>:null}
     <section className="metrics"><article className="metric-card card"><p>Total Invoiced</p><strong>{money(total)}</strong></article><article className="metric-card card"><p>Total Received</p><strong>{money(received)}</strong></article><article className="metric-card card"><p>Outstanding</p><strong>{money(total-received)}</strong></article></section>
     <section className="card"><Toolbar query={query} onQuery={setQuery} placeholder="Search invoice, company, or project..."><select className="select" value={status} onChange={event=>setStatus(event.target.value)}><option value="all">All Statuses</option><option value="pending">pending</option><option value="partial">partial</option><option value="paid">paid</option><option value="overdue">overdue</option></select></Toolbar><div className="table-wrap desktop-data-table"><table className="data-table invoices-table"><thead><tr><th>Company</th><th>Project</th><th>Invoice</th><th>Date</th><th>Amount</th><th>Received</th><th>Balance</th><th>Status</th><th>Actions</th></tr></thead><tbody>{filtered.length?filtered.map(invoice=><tr key={invoice.id}><td>{invoice.companyName}</td><td>{invoice.project||"—"}</td><td>{invoice.id}</td><td>{invoice.invoiceDate}</td><td>{money(invoice.amount)}</td><td>{money(invoice.received)}</td><td>{money(invoice.amount-invoice.received)}</td><td><select className="inline-select status-inline-select" value={invoice.status} onChange={event=>void change(invoice.id,event.target.value)}><option value="pending">pending</option><option value="partial">partial</option><option value="paid">paid</option><option value="overdue">overdue</option></select></td><td><div className="row-actions"><button className="icon-button" type="button" onClick={()=>void exportPdf(invoice)} title="Export ZATCA invoice PDF"><Download size={15}/></button><Link className="icon-button" href={`${routes.editInvoice}?id=${encodeURIComponent(invoice.id)}`} title="Edit full invoice"><Edit3 size={15}/></Link><button className="icon-button icon-button--danger" type="button" onClick={()=>remove(invoice)} title="Delete invoice"><Trash2 size={15}/></button></div></td></tr>):<EmptyTableRow columns={9} message="No invoices found."/>}</tbody></table></div><div className="mobile-card-list mobile-company-list">{groupedInvoices.length?groupedInvoices.map(group=><section className="mobile-company-card" key={group.company}><header><span>Company History</span><h3>{group.company}</h3><small>{group.items.length} invoice(s) · Total {money(group.total)} · Balance {money(group.total-group.received)}</small></header><div className="mobile-company-card__records">{group.items.map(invoice=><article className="mobile-record-card" key={invoice.id}><header><div><span>Invoice</span><strong>{invoice.id}</strong><small>{invoice.invoiceDate||"No date"} · {invoice.project||"No project"}</small></div><select className="inline-select mobile-status-select" value={invoice.status} onChange={event=>void change(invoice.id,event.target.value)}><option value="pending">pending</option><option value="partial">partial</option><option value="paid">paid</option><option value="overdue">overdue</option></select></header><dl><div className="mobile-field-wide"><dt>Job / Project</dt><dd>{invoice.project||"—"}</dd></div><div><dt>Date</dt><dd>{invoice.invoiceDate||"—"}</dd></div><div><dt>Amount</dt><dd>{money(invoice.amount)}</dd></div><div><dt>Received</dt><dd>{money(invoice.received)}</dd></div><div><dt>Balance</dt><dd>{money(invoice.amount-invoice.received)}</dd></div><div><dt>Quotation</dt><dd>{invoice.quotationSerialNumber||invoice.quotationNo||"—"}</dd></div></dl><footer><button className="button" type="button" onClick={()=>void exportPdf(invoice)}><Download size={14}/>PDF</button><Link className="button button--primary" href={`${routes.editInvoice}?id=${encodeURIComponent(invoice.id)}`}><Edit3 size={14}/>Edit</Link><button className="button button--danger" type="button" onClick={()=>remove(invoice)}><Trash2 size={14}/>Delete</button></footer></article>)}</div></section>):<div className="mobile-empty-state">No invoices found.</div>}</div></section>
+    {flowModal?<InvoiceFlowModal quotations={availableQuotations} onClose={()=>setFlowModal(false)} onStandalone={()=>{setFlowModal(false);setDraft(null);setModal(true);}}/>:null}
     {modal?<InvoiceDocumentModal draft={draft} onClose={()=>{setModal(false);setDraft(null);}}/>:null}
   </>;
 }

@@ -6457,3 +6457,56 @@ body {
     display: inline-flex !important;
   }
 }
+
+/* Compact chooser used before opening either invoice creation flow. */
+.invoice-flow-backdrop {
+  align-items: center;
+  justify-content: center;
+  padding: 14px;
+}
+
+.invoice-flow-modal {
+  width: min(420px, calc(100vw - 28px), calc(100dvh - 28px));
+  height: min(420px, calc(100vw - 28px), calc(100dvh - 28px));
+  max-width: none;
+  max-height: none;
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  border-radius: 8px;
+  padding: 24px;
+}
+
+.invoice-flow-modal .form-grid {
+  grid-template-columns: 1fr;
+  margin-top: 18px;
+}
+
+.invoice-flow-modal .form-actions {
+  position: static;
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin: auto 0 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.invoice-flow-modal .form-actions .button {
+  width: 100%;
+  min-height: 48px;
+  white-space: normal;
+}
+
+@media (max-width: 420px), (max-height: 520px) {
+  .invoice-flow-modal {
+    padding: 18px;
+  }
+
+  .invoice-flow-modal .modal-card__header {
+    position: static;
+  }
+}

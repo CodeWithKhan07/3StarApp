@@ -108,7 +108,6 @@ export function InvoiceDocumentModal({
       id,
       companyName: selectedCompanyName,
       project: String(form.get("project") || "").trim(),
-      quotationNo: String(form.get("quotationNo") || "").trim(),
       purchaseOrderNumber: String(form.get("purchaseOrderNumber") || "").trim(),
       invoiceDate: String(form.get("invoiceDate") || today()),
       dueDate: String(form.get("dueDate") || ""),
@@ -163,11 +162,11 @@ export function InvoiceDocumentModal({
       >
         <header className="modal-card__header">
           <div>
-            <h2>{draft ? "Review Imported Invoice" : "New Invoice"}</h2>
+            <h2>{draft ? "Review Imported Invoice" : "Standalone Invoice"}</h2>
             <p>
               {draft
                 ? "Verify the extracted Excel/PDF values before saving."
-                : "Enter invoice and ZATCA details."}
+                : "Create an invoice without linking an in-app quotation."}
             </p>
           </div>
           <button
@@ -266,10 +265,6 @@ export function InvoiceDocumentModal({
             <label className="field">
               <span>Project</span>
               <input name="project" defaultValue={draft?.project} />
-            </label>
-            <label className="field">
-              <span>Quotation No.</span>
-              <input name="quotationNo" defaultValue={draft?.quotationNo} />
             </label>
             <label className="field">
               <span>Terms</span>
