@@ -6466,20 +6466,25 @@ body {
 }
 
 .invoice-flow-modal {
-  width: min(420px, calc(100vw - 28px), calc(100dvh - 28px));
-  height: min(420px, calc(100vw - 28px), calc(100dvh - 28px));
-  max-width: none;
-  max-height: none;
+  width: min(360px, calc(100vw - 28px)) !important;
+  height: auto !important;
+  max-width: 360px !important;
+  max-height: calc(100dvh - 28px) !important;
   display: flex;
   flex-direction: column;
   overflow: auto;
   border-radius: 8px;
-  padding: 24px;
+  padding: 20px;
 }
 
 .invoice-flow-modal .form-grid {
   grid-template-columns: 1fr;
-  margin-top: 18px;
+  margin-top: 12px;
+}
+
+.invoice-flow-modal .field select {
+  height: 42px;
+  min-height: 42px;
 }
 
 .invoice-flow-modal .form-actions {
@@ -6487,7 +6492,7 @@ body {
   width: 100%;
   display: grid;
   grid-template-columns: 1fr 1fr;
-  margin: auto 0 0;
+  margin: 18px 0 0;
   border: 0;
   background: transparent;
   padding: 0;
@@ -6503,7 +6508,7 @@ body {
 
 @media (max-width: 420px), (max-height: 520px) {
   .invoice-flow-modal {
-    padding: 18px;
+    padding: 16px;
   }
 
   .invoice-flow-modal .modal-card__header {

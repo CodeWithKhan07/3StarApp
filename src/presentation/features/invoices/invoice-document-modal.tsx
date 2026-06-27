@@ -162,7 +162,7 @@ export function InvoiceDocumentModal({
       >
         <header className="modal-card__header">
           <div>
-            <h2>{draft ? "Review Imported Invoice" : "Standalone Invoice"}</h2>
+            <h2>{draft ? "Review Imported Invoice" : "New Invoice Without Quotation"}</h2>
             <p>
               {draft
                 ? "Verify the extracted Excel/PDF values before saving."
