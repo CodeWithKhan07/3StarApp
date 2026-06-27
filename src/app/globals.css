@@ -6517,3 +6517,31 @@ body {
     position: static;
   }
 }
+
+.invoice-document-modal .invoice-line-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin: 18px 0 30px;
+}
+
+.invoice-document-modal .invoice-add-item {
+  min-width: 180px;
+  min-height: 52px;
+  padding-inline: 24px;
+  font-size: 15px;
+  font-weight: 750;
+}
+
+.invoice-document-modal .invoice-document-actions {
+  margin-top: 22px;
+}
+
+@media (max-width: 600px) {
+  .invoice-document-modal .invoice-line-actions {
+    margin: 16px 0 26px;
+  }
+
+  .invoice-document-modal .invoice-add-item {
+    width: 100%;
+  }
+}

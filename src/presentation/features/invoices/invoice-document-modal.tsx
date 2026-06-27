@@ -155,7 +155,7 @@ export function InvoiceDocumentModal({
   return (
     <div className="modal-backdrop" role="presentation" onClick={onClose}>
       <div
-        className="modal-card modal-card--wide card"
+        className="modal-card modal-card--wide invoice-document-modal card"
         role="dialog"
         aria-modal="true"
         onClick={(event) => event.stopPropagation()}
@@ -536,9 +536,9 @@ export function InvoiceDocumentModal({
               </tbody>
             </table>
           </div>
-          <div className="form-actions">
+          <div className="invoice-line-actions">
             <button
-              className="button"
+              className="button button--primary invoice-add-item"
               type="button"
               onClick={() =>
                 setLineItems((items) => [
@@ -556,7 +556,7 @@ export function InvoiceDocumentModal({
                 ])
               }
             >
-              <Plus size={14} />
+              <Plus size={18} />
               Add Item
             </button>
           </div>
@@ -577,7 +577,7 @@ export function InvoiceDocumentModal({
           {error ? (
             <div className="form-message form-message--error">{error}</div>
           ) : null}
-          <div className="form-actions">
+          <div className="form-actions invoice-document-actions">
             <button type="button" className="button" onClick={onClose}>
               Cancel
             </button>
