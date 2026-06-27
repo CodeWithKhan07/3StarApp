@@ -4,7 +4,7 @@ import type { InvoiceImportDraft } from "@/application/services/invoice-import";
 import type { Invoice } from "@/domain/entities/business";
 import { createNextInvoiceId } from "@/lib/record-ids";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
-import { Plus, Trash2, X } from "lucide-react";
+import { Check, Plus, Trash2, X } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -169,17 +169,29 @@ export function InvoiceDocumentModal({
                 : "Create an invoice without linking an in-app quotation."}
             </p>
           </div>
-          <button
-            className="icon-button"
-            type="button"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            <X size={17} />
-          </button>
+          <div className="invoice-document-header-actions">
+            <button
+              className="icon-button icon-button--success"
+              type="submit"
+              form="invoice-document-form"
+              disabled={submitting}
+              aria-label="Save invoice"
+              title="Save invoice"
+            >
+              <Check size={18} />
+            </button>
+            <button
+              className="icon-button"
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+            >
+              <X size={17} />
+            </button>
+          </div>
         </header>
 
-        <form onSubmit={handleSubmit}>
+        <form id="invoice-document-form" onSubmit={handleSubmit}>
           <div className="form-grid">
             <label className="field">
               <span>Invoice No.</span>

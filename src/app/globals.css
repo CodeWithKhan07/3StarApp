@@ -6533,7 +6533,21 @@ body {
 }
 
 .invoice-document-modal .invoice-document-actions {
-  margin-top: 22px;
+  position: static;
+  width: 100%;
+  margin: 22px 0 0;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.invoice-document-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
 }
 
 @media (max-width: 600px) {
