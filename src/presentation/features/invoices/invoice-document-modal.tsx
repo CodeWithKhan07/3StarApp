@@ -387,6 +387,7 @@ export function InvoiceDocumentForm({
               <select name="status" defaultValue={draft?.status || "pending"}>
                 <option value="pending">Pending</option>
                 <option value="partial">Partial</option>
+                <option value="po">Pending PO</option>
                 <option value="paid">Paid</option>
                 <option value="overdue">Overdue</option>
               </select>

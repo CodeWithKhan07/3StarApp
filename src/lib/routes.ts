@@ -19,16 +19,20 @@ export const routes = {
 
   ongoingProjects: "/ongoing-projects",
   completedProjects: "/completed-projects",
+  recordDetail: "/records/detail",
 
   invoices: "/invoices",
   newInvoice: "/invoices/new",
   editInvoice: "/invoices/edit",
 
   pendingPayments: "/pending-payments",
+  pendingPo: "/pending-po",
 
   statements: "/statements",
+  history: "/history",
 
   excelExport: "/excel-export",
+  trash: "/trash",
 
   reports: "/reports",
   settings: "/settings",

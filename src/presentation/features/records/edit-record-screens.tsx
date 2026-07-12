@@ -1,6 +1,6 @@
 "use client";
 
-import type { Project } from "@/domain/entities/business";
+import type { Invoice, Project } from "@/domain/entities/business";
 import { routes } from "@/lib/routes";
 import { PageHeader, StatusBadge } from "@/presentation/components/ui";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
@@ -32,6 +32,15 @@ const normalizeDecimalInput = (value: string) => {
 
   return integerWithoutLeadingZero;
 };
+
+const invoiceStatusOptions: Array<{ label: string; value: Invoice["status"] }> = [
+  { label: "Pending", value: "pending" },
+  { label: "Partial", value: "partial" },
+  { label: "Pending PO", value: "po" },
+  { label: "Paid", value: "paid" },
+  { label: "Overdue", value: "overdue" },
+  { label: "Cancelled", value: "cancelled" },
+];
 
 function EditShell({
   title,
@@ -759,6 +768,7 @@ export function InvoiceEditScreen() {
         received: number(f, "received"),
         paymentDate: text(f, "paymentDate"),
         paymentMode: text(f, "paymentMode"),
+        status: text(f, "status") as Invoice["status"],
         followUpDate: text(f, "followUpDate"),
         remarks: text(f, "remarks"),
         notes: text(f, "notes"),
@@ -981,6 +991,16 @@ export function InvoiceEditScreen() {
         <label className="field">
           <span>Payment Mode</span>
           <input name="paymentMode" defaultValue={record.paymentMode} />
+        </label>
+        <label className="field">
+          <span>Status</span>
+          <select name="status" defaultValue={record.status}>
+            {invoiceStatusOptions.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="field">
           <span>Follow-up Date</span>

@@ -2,32 +2,249 @@
 
 import type { BusinessDataSet } from "@/domain/entities/business";
 import { routes } from "@/lib/routes";
-import { EmptyTableRow, PageHeader, StatusBadge } from "@/presentation/components/ui";
+import { PageHeader, StatusBadge } from "@/presentation/components/ui";
 import { money } from "@/presentation/data/sample-data";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
-import { Edit3, Plus, Search, Trash2 } from "lucide-react";
+import { collectCompanyNames, normalizeCompanyKey } from "@/presentation/utils/company-filters";
+import { Plus, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 
 type Project = BusinessDataSet["projects"][number];
 type ProjectStatus = Project["status"];
-const statuses: Array<{label:string;value:ProjectStatus}>=[{label:"Upcoming",value:"upcoming"},{label:"In Progress",value:"in-progress"},{label:"On Hold",value:"on-hold"},{label:"Completed",value:"completed"},{label:"Cancelled",value:"cancelled"}];
-const categories=["Automatic Door","Rolling Shutter","Glass Work","Aluminium Work","Maintenance","Installation","Other"];
-const record=(value:unknown)=>typeof value==="object"&&value!==null?value as Record<string,unknown>:{};
-const firstString=(value:Record<string,unknown>,keys:string[],fallback="")=>{for(const key of keys){const item=value[key];if(typeof item==="string"&&item.trim())return item;}return fallback;};
-const firstNumber=(value:Record<string,unknown>,keys:string[])=>{for(const key of keys){const item=Number(value[key]);if(Number.isFinite(item))return item;}return 0;};
-function normalize(project:Project){const value=record(project);return{raw:project,id:firstString(value,["id","projectId"]),company:firstString(value,["company","companyName","clientName"],"Unnamed Company"),store:firstString(value,["store","storeBranch","branch"]),location:firstString(value,["location","site"]),description:firstString(value,["workDescription","description","scope"]),category:firstString(value,["category"],"Other"),quotationNo:firstString(value,["quotationNo","quotationNumber"]),woNo:firstString(value,["woNo","workOrderNo"]),amount:firstNumber(value,["value","projectValue","amount"]),startDate:firstString(value,["startDate"]),expected:firstString(value,["expectedCompletion","expectedCompletionDate"]),status:firstString(value,["status"],"upcoming") as ProjectStatus,completion:firstNumber(value,["completion","completionPercentage"]),remarks:firstString(value,["remarks","notes"])};}
 
-export function ProjectsScreen(){
-  const {data,syncState,updateProjectStatus,deleteRecord}=useBusinessData();
-  const [query,setQuery]=useState("");const [status,setStatus]=useState("all");const [category,setCategory]=useState("all");
-  const projects=useMemo(()=>data.projects.map(normalize),[data.projects]);
-  const availableCategories=useMemo(()=>Array.from(new Set(projects.map(item=>item.category).filter(Boolean))),[projects]);
-  const filtered=useMemo(()=>{const q=query.trim().toLowerCase();return projects.filter(item=>(!q||Object.values(item).filter(v=>typeof v==="string").join(" ").toLowerCase().includes(q))&&(status==="all"||item.status===status)&&(category==="all"||item.category===category));},[projects,query,status,category]);
-  const groupedProjects=useMemo(()=>Array.from(filtered.reduce((map,item)=>{const company=item.company?.trim()||"Unnamed Company";const list=map.get(company)||[];list.push(item);map.set(company,list);return map;},new Map<string,typeof filtered>()).entries()).map(([company,items])=>({company,items,total:items.reduce((sum,item)=>sum+item.amount,0),completed:items.filter(item=>item.status==="completed").length})),[filtered]);
-  function remove(item:ReturnType<typeof normalize>){window.setTimeout(()=>{if(window.confirm(`Delete project "${item.id}" for "${item.company}"?`))void deleteRecord("projects",item.id).catch((error)=>console.error("Project could not be deleted.",error));},0);}
-  return <><PageHeader title="Projects" description={`Project register with full-page editing and quick status changes. Cloud: ${syncState}.`} actions={<Link className="button button--primary" href={routes.newProject}><Plus size={14}/>New Project</Link>}/>
-    <section className="card table-toolbar"><label className="toolbar-search"><Search size={15}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Search project, company, location, quotation, WO..."/></label><select className="select" value={status} onChange={e=>setStatus(e.target.value)}><option value="all">All Status</option>{statuses.map(item=><option key={item.value} value={item.value}>{item.label}</option>)}</select><select className="select" value={category} onChange={e=>setCategory(e.target.value)}><option value="all">All Categories</option>{[...availableCategories,...categories.filter(item=>!availableCategories.includes(item))].map(item=><option key={item}>{item}</option>)}</select></section>
-    <section className="card"><div className="table-wrap desktop-data-table"><table className="data-table projects-table projects-master-table"><thead><tr><th>Project ID</th><th>Company</th><th>Store / Branch</th><th>Location</th><th>Work Description</th><th>Category</th><th>Quotation No</th><th>WO No</th><th>Value</th><th>Start Date</th><th>Expected</th><th>Status</th><th>Completion</th><th>Remarks</th><th>Actions</th></tr></thead><tbody>{filtered.length?filtered.map(item=><tr key={item.id}><td className="strong-cell">{item.id}</td><td>{item.company}</td><td>{item.store||"—"}</td><td>{item.location||"—"}</td><td><span className="description-cell">{item.description||"—"}</span></td><td>{item.category}</td><td>{item.quotationNo||"—"}</td><td>{item.woNo||"—"}</td><td className="money-cell">{money(item.amount)}</td><td>{item.startDate||"—"}</td><td>{item.expected||"—"}</td><td><select className="inline-select status-inline-select" value={item.status} onChange={e=>void updateProjectStatus(item.id,e.target.value as ProjectStatus)}>{statuses.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select><div className="status-under-select"><StatusBadge value={item.status}/></div></td><td>{item.completion}%</td><td>{item.remarks||"—"}</td><td><div className="row-actions"><Link className="icon-button" href={`${routes.editProject}?id=${encodeURIComponent(item.id)}`} title="Edit full project"><Edit3 size={17}/></Link><button className="icon-button icon-button--danger" type="button" onClick={()=>void remove(item)} title="Delete"><Trash2 size={17}/></button></div></td></tr>):<EmptyTableRow columns={15} message="No projects found."/>}</tbody></table></div><div className="mobile-card-list mobile-company-list">{groupedProjects.length?groupedProjects.map(group=><section className="mobile-company-card" key={group.company}><header><span>Company History</span><h3>{group.company}</h3><small>{group.items.length} job(s) · {group.completed} completed · Total {money(group.total)}</small></header><div className="mobile-company-card__records">{group.items.map(item=><article className="mobile-record-card" key={item.id}><header><div><span>Project</span><strong>{item.id}</strong><small>{item.startDate||"No date"} · {item.store||"No branch"}</small></div><StatusBadge value={item.status}/></header><dl><div><dt>Store</dt><dd>{item.store||"—"}</dd></div><div><dt>Location</dt><dd>{item.location||"—"}</dd></div><div className="mobile-field-wide"><dt>Job / Work</dt><dd>{item.description||"—"}</dd></div><div><dt>Category</dt><dd>{item.category}</dd></div><div><dt>Value</dt><dd>{money(item.amount)}</dd></div><div><dt>Completion</dt><dd>{item.completion}%</dd></div></dl><div className="mobile-card-status"><span>Status</span><select className="inline-select mobile-status-select" value={item.status} onChange={e=>void updateProjectStatus(item.id,e.target.value as ProjectStatus)}>{statuses.map(option=><option key={option.value} value={option.value}>{option.label}</option>)}</select></div><footer><Link className="button button--primary" href={`${routes.editProject}?id=${encodeURIComponent(item.id)}`}><Edit3 size={14}/>Edit</Link><button className="button button--danger" type="button" onClick={()=>void remove(item)}><Trash2 size={14}/>Delete</button></footer></article>)}</div></section>):<div className="mobile-empty-state">No projects found.</div>}</div></section>
-  </>;
+const statuses: Array<{ label: string; value: ProjectStatus }> = [
+  { label: "Upcoming", value: "upcoming" },
+  { label: "In Progress", value: "in-progress" },
+  { label: "On Hold", value: "on-hold" },
+  { label: "Completed", value: "completed" },
+  { label: "Cancelled", value: "cancelled" },
+];
+
+const categories = [
+  "Automatic Door",
+  "Rolling Shutter",
+  "Glass Work",
+  "Aluminium Work",
+  "Maintenance",
+  "Installation",
+  "Other",
+];
+
+const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
+const dateFormat = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
+
+const record = (value: unknown) =>
+  typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : {};
+
+function firstString(value: Record<string, unknown>, keys: string[], fallback = "") {
+  for (const key of keys) {
+    const item = value[key];
+    if (typeof item === "string" && item.trim()) return item;
+  }
+  return fallback;
+}
+
+function firstNumber(value: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const item = Number(value[key]);
+    if (Number.isFinite(item)) return item;
+  }
+  return 0;
+}
+
+function normalize(project: Project) {
+  const value = record(project);
+  return {
+    raw: project,
+    id: firstString(value, ["id", "projectId"]),
+    company: firstString(value, ["company", "companyName", "clientName"], "Unnamed Company"),
+    store: firstString(value, ["store", "storeBranch", "branch"]),
+    location: firstString(value, ["location", "site"]),
+    description: firstString(value, ["workDescription", "description", "scope"]),
+    category: firstString(value, ["category"], "Other"),
+    quotationNo: firstString(value, ["quotationNo", "quotationNumber"]),
+    woNo: firstString(value, ["woNo", "workOrderNo"]),
+    amount: firstNumber(value, ["value", "projectValue", "amount"]),
+    startDate: firstString(value, ["startDate"]),
+    expected: firstString(value, ["expectedCompletion", "expectedCompletionDate"]),
+    status: firstString(value, ["status"], "upcoming") as ProjectStatus,
+    completion: firstNumber(value, ["completion", "completionPercentage"]),
+    remarks: firstString(value, ["remarks", "notes"]),
+  };
+}
+
+type NormalizedProject = ReturnType<typeof normalize>;
+
+function dateValue(item: NormalizedProject) {
+  const parsed = new Date(`${item.startDate || "1900-01-01"}T00:00:00`);
+  const value = parsed.valueOf();
+  return Number.isNaN(value) ? 0 : value;
+}
+
+function dateKey(item: NormalizedProject) {
+  return item.startDate || "No date";
+}
+
+function formatDate(value: string) {
+  if (!value || value === "No date") return "No date";
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isNaN(parsed.valueOf()) ? value : dateFormat.format(parsed);
+}
+
+export function ProjectsScreen() {
+  const router = useRouter();
+  const { data, syncState } = useBusinessData();
+  const [query, setQuery] = useState("");
+  const [status, setStatus] = useState("all");
+  const [category, setCategory] = useState("all");
+  const [company, setCompany] = useState("all");
+  const [dateJump, setDateJump] = useState("all");
+
+  const projects = useMemo(
+    () =>
+      data.projects
+        .map(normalize)
+        .sort((a, b) => dateValue(b) - dateValue(a) || collator.compare(b.id, a.id)),
+    [data.projects],
+  );
+  const availableCategories = useMemo(
+    () => Array.from(new Set(projects.map((item) => item.category).filter(Boolean))),
+    [projects],
+  );
+  const companies = useMemo(() => collectCompanyNames(data), [data]);
+  const dateKeys = useMemo(() => Array.from(new Set(projects.map(dateKey))), [projects]);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return projects.filter(
+      (item) =>
+        (!q ||
+          [
+            item.id,
+            item.company,
+            item.store,
+            item.location,
+            item.description,
+            item.category,
+            item.quotationNo,
+            item.woNo,
+            item.remarks,
+          ]
+            .join(" ")
+            .toLowerCase()
+            .includes(q)) &&
+        (status === "all" || item.status === status) &&
+        (category === "all" || item.category === category) &&
+        (company === "all" || normalizeCompanyKey(item.company) === company) &&
+        (dateJump === "all" || dateKey(item) === dateJump),
+    );
+  }, [category, company, dateJump, projects, query, status]);
+
+  return (
+    <>
+      <PageHeader
+        title="Projects"
+        description={`Plain project list with quick details. Cloud: ${syncState}.`}
+        actions={
+          <>
+            <Link className="button" href={routes.trash}>
+              <Trash2 size={14} />
+              Trash
+            </Link>
+            <Link className="button button--primary" href={routes.newProject}>
+              <Plus size={14} />
+              New Project
+            </Link>
+          </>
+        }
+      />
+
+      <section className="card table-toolbar project-date-toolbar">
+        <label className="toolbar-search">
+          <Search size={15} />
+          <input
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search project, company, location, quotation, WO..."
+          />
+        </label>
+        <select className="select" value={company} onChange={(event) => setCompany(event.target.value)}>
+          <option value="all">All Companies</option>
+          {companies.map((item) => (
+            <option key={item} value={normalizeCompanyKey(item)}>
+              {item}
+            </option>
+          ))}
+        </select>
+        <select className="select" value={dateJump} onChange={(event) => setDateJump(event.target.value)}>
+          <option value="all">All Dates</option>
+          {dateKeys.map((item) => (
+            <option key={item} value={item}>
+              {formatDate(item)}
+            </option>
+          ))}
+        </select>
+        <select className="select" value={status} onChange={(event) => setStatus(event.target.value)}>
+          <option value="all">All Status</option>
+          {statuses.map((item) => (
+            <option key={item.value} value={item.value}>
+              {item.label}
+            </option>
+          ))}
+        </select>
+        <select className="select" value={category} onChange={(event) => setCategory(event.target.value)}>
+          <option value="all">All Categories</option>
+          {[...availableCategories, ...categories.filter((item) => !availableCategories.includes(item))].map((item) => (
+            <option key={item}>{item}</option>
+          ))}
+        </select>
+      </section>
+
+      <section className="card plain-data-card">
+        <div className="table-wrap plain-list-wrap">
+          <table className="data-table statement-table project-history-table plain-data-table">
+            <thead>
+              <tr>
+                <th>Start Date</th>
+                <th>Project</th>
+                <th>Company</th>
+                <th>Store / Location</th>
+                <th>Value</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((item) => (
+                <tr
+                  className="plain-data-row"
+                  key={item.id}
+                  onClick={() => router.push(`${routes.recordDetail}?type=project&id=${encodeURIComponent(item.id)}`)}
+                >
+                  <td>{item.startDate || "-"}</td>
+                  <td className="strong-cell">{item.id}</td>
+                  <td>{item.company}</td>
+                  <td>{item.store || "-"}<br /><small>{item.location || "No location"}</small></td>
+                  <td className="money-cell">{money(item.amount)}</td>
+                  <td><StatusBadge value={item.status} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {!filtered.length ? (
+          <section className="card empty-state">
+            <h2>No projects found</h2>
+            <p>Try clearing the company, date, status, category, or search filters.</p>
+          </section>
+        ) : null}
+      </section>
+    </>
+  );
 }

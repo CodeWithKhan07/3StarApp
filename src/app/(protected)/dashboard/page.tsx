@@ -22,7 +22,9 @@ export default function DashboardPage() {
   const { data, syncState } = useBusinessData();
   const { clients, invoices, projects } = data;
 
-  const pending = invoices.filter((invoice) => invoice.status !== "paid");
+  const pending = invoices.filter((invoice) =>
+    ["pending", "partial", "overdue"].includes(invoice.status),
+  );
   const invoiced = invoices.reduce((sum, invoice) => sum + invoice.amount, 0);
   const received = invoices.reduce((sum, invoice) => sum + invoice.received, 0);
   const receivedRate = invoiced ? Math.round((received / invoiced) * 100) : 0;

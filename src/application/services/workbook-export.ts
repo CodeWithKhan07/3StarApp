@@ -36,6 +36,7 @@ export async function exportBusinessWorkbook(data: WorkbookData, filename = "3St
   addSheet("Quotations", normalize(data.quotations));
   addSheet("Invoices & Payments", data.invoices.map((invoice) => ({ ...invoice, balanceDue: invoice.amount - invoice.received })));
   addSheet("Pending Payments", data.invoices.filter((invoice) => ["pending", "partial", "overdue"].includes(invoice.status)).map((invoice) => ({ ...invoice, outstanding: invoice.amount - invoice.received })));
+  addSheet("Pending PO", data.invoices.filter((invoice) => invoice.status === "po").map((invoice) => ({ ...invoice, outstanding: invoice.amount - invoice.received })));
 
   const buffer = await workbook.xlsx.writeBuffer();
   const blob = new Blob([new Uint8Array(buffer)], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });

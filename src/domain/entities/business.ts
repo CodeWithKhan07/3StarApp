@@ -1,7 +1,7 @@
 export type RecordStatus = "active" | "pending" | "inactive";
 export type ProjectStatus = "upcoming" | "in-progress" | "on-hold" | "completed" | "cancelled";
 export type QuotationStatus = "draft" | "sent" | "approved" | "rejected" | "expired";
-export type PaymentStatus = "pending" | "partial" | "paid" | "overdue" | "cancelled";
+export type PaymentStatus = "pending" | "partial" | "po" | "paid" | "overdue" | "cancelled";
 
 export interface Client {
   id: string;
@@ -198,4 +198,16 @@ export interface BusinessDataSet {
   projects: Project[];
   quotations: Quotation[];
   invoices: Invoice[];
+  trash?: TrashItem[];
+}
+
+export interface TrashItem {
+  id: string;
+  collection: "clients" | "projects" | "quotations" | "invoices";
+  recordId: string;
+  label: string;
+  companyName: string;
+  deletedAt: string;
+  deleteAfter: string;
+  record: Client | Project | Quotation | Invoice;
 }

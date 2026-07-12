@@ -504,6 +504,7 @@ export function ExportScreen() {
 
             <option value="pending">Pending</option>
             <option value="partial">Partial</option>
+            <option value="po">Pending PO</option>
             <option value="overdue">Overdue</option>
             <option value="paid">Paid</option>
           </select>
@@ -583,9 +584,10 @@ export function ExportScreen() {
                     const secondary = readFirstString(
                       record,
                       [
-                        "description",
-                        "workDescription",
-                        "scope",
+                        "id",
+                        "projectId",
+                        "invoiceNo",
+                        "quotationNo",
                         "location",
                         "city",
                         "category",

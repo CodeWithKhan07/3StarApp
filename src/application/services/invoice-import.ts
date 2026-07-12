@@ -39,7 +39,7 @@ export interface InvoiceImportDraft {
   received: number;
   paymentDate: string;
   paymentMode: string;
-  status: "pending" | "partial" | "paid" | "overdue";
+  status: "pending" | "partial" | "po" | "paid" | "overdue";
   remarks: string;
   lineItems: InvoiceImportLineItem[];
 }

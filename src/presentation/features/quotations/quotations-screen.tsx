@@ -19,6 +19,7 @@ import {
 } from "@/presentation/components/ui";
 import { money } from "@/presentation/data/sample-data";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
+import { collectCompanyNames, normalizeCompanyKey } from "@/presentation/utils/company-filters";
 import {
   Check,
   Download,
@@ -31,6 +32,7 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, type FormEvent } from "react";
 
 type Quotation = BusinessDataSet["quotations"][number];
@@ -210,6 +212,7 @@ function createPatchedQuotation(quotation: Quotation, patch: Partial<ReturnType<
 }
 
 export function QuotationsScreen() {
+  const router = useRouter();
   const {
     data,
     syncState,
@@ -221,6 +224,7 @@ export function QuotationsScreen() {
 
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
+  const [company, setCompany] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [minAmount, setMinAmount] = useState("");
@@ -298,6 +302,8 @@ export function QuotationsScreen() {
       .filter((client) => client.companyName);
   }, [data.clients]);
 
+  const companyOptions = useMemo(() => collectCompanyNames(data), [data]);
+
   function applySavedClient(clientId: string) {
     setSelectedClientId(clientId);
     const client = clientOptions.find((item) => item.id === clientId);
@@ -343,6 +349,8 @@ export function QuotationsScreen() {
 
       const matchesQuery = !normalizedQuery || target.includes(normalizedQuery);
       const matchesStatus = status === "all" || quotation.status === status;
+      const matchesCompany =
+        company === "all" || normalizeCompanyKey(quotation.companyName) === company;
       const matchesFrom = !fromTime || issueTime >= fromTime;
       const matchesTo = !toTime || issueTime <= toTime;
       const matchesMin = minValue === null || quotation.amount >= minValue;
@@ -351,6 +359,7 @@ export function QuotationsScreen() {
       return (
         matchesQuery &&
         matchesStatus &&
+        matchesCompany &&
         matchesFrom &&
         matchesTo &&
         matchesMin &&
@@ -377,7 +386,7 @@ export function QuotationsScreen() {
 
       return new Date(b.issueDate || 0).getTime() - new Date(a.issueDate || 0).getTime();
     });
-  }, [quotations, query, status, dateFrom, dateTo, minAmount, maxAmount, sortBy]);
+  }, [company, quotations, query, status, dateFrom, dateTo, minAmount, maxAmount, sortBy]);
 
   const stats = useMemo(() => {
     const totalValue = quotations.reduce((sum, item) => sum + item.amount, 0);
@@ -400,15 +409,15 @@ export function QuotationsScreen() {
     return Array.from(
       filteredQuotations
         .reduce((map, item) => {
-          const company = item.companyName?.trim() || "Unnamed Company";
-          const list = map.get(company) || [];
+          const companyName = item.companyName?.trim() || "Unnamed Company";
+          const list = map.get(companyName) || [];
           list.push(item);
-          map.set(company, list);
+          map.set(companyName, list);
           return map;
         }, new Map<string, typeof filteredQuotations>())
-        .entries()
-    ).map(([company, items]) => ({
-      company,
+        .entries(),
+    ).map(([companyName, items]) => ({
+      company: companyName,
       items,
       total: items.reduce((sum, item) => sum + item.amount, 0),
       approved: items.filter((item) => item.status === "approved").length,
@@ -879,6 +888,19 @@ export function QuotationsScreen() {
           ))}
         </select>
 
+        <select
+          className="select"
+          value={company}
+          onChange={(event) => setCompany(event.target.value)}
+        >
+          <option value="all">All Companies</option>
+          {companyOptions.map((name) => (
+            <option key={name} value={normalizeCompanyKey(name)}>
+              {name}
+            </option>
+          ))}
+        </select>
+
         <label className="compact-filter-field">
           <span>From date</span>
           <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
@@ -913,6 +935,7 @@ export function QuotationsScreen() {
           onClick={() => {
             setQuery("");
             setStatus("all");
+            setCompany("all");
             setDateFrom("");
             setDateTo("");
             setMinAmount("");
@@ -929,7 +952,7 @@ export function QuotationsScreen() {
           <div>
             <h2>Quotation Tracker</h2>
             <p>
-              Showing {filteredQuotations.length} of {quotations.length} quotations. Grouped by company/customer with job history and reachable actions.
+              Showing {filteredQuotations.length} of {quotations.length} quotations. Tap a row to open details and actions.
             </p>
           </div>
         </div>
@@ -955,7 +978,13 @@ export function QuotationsScreen() {
                   const isEditing = editingId === quotation.id && draft;
 
                   return (
-                    <tr key={quotation.id}>
+                    <tr
+                      className="plain-data-row"
+                      key={quotation.id}
+                      onClick={() => {
+                        if (!isEditing) router.push(`${routes.recordDetail}?type=quotation&id=${encodeURIComponent(quotation.id)}`);
+                      }}
+                    >
                       <td className="strong-cell">{quotation.id}</td>
                       <td className="strong-cell">{quotation.serialNumber}</td>
 
@@ -1054,7 +1083,7 @@ export function QuotationsScreen() {
 
 
                       <td>
-                        <div className="row-actions">
+                        <div className="row-actions" onClick={(event) => event.stopPropagation()}>
                           {isEditing ? (
                             <>
                               <button
@@ -1132,11 +1161,16 @@ export function QuotationsScreen() {
             groupedQuotations.map((group) => (
               <section className="mobile-company-card" key={group.company}>
                 <header>
-                  <span>Customer / Company History</span>
-                  <h3>{group.company}</h3>
-                  <small>
-                    {group.items.length} quotation(s) · {group.approved} approved · Total {money(group.total)}
-                  </small>
+                  <div>
+                    <span>Customer / Company History</span>
+                    <h3>{group.company}</h3>
+                    <small>
+                      {group.items.length} quotation(s) · {group.approved} approved · Total {money(group.total)}
+                    </small>
+                  </div>
+                  <Link className="button" href={`${routes.history}?company=${encodeURIComponent(normalizeCompanyKey(group.company))}`}>
+                    History
+                  </Link>
                 </header>
 
                 <div className="mobile-company-card__records">

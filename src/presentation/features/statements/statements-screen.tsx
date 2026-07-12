@@ -6,6 +6,7 @@ import { routes } from "@/lib/routes";
 import { PageHeader } from "@/presentation/components/ui";
 import { money } from "@/presentation/data/sample-data";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
+import { collectCompanyNames } from "@/presentation/utils/company-filters";
 import { CalendarDays, Download, FileText, ReceiptText, Search, WalletCards } from "lucide-react";
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -38,11 +39,8 @@ export function StatementsScreen() {
   const [error, setError] = useState("");
 
   const companyNames = useMemo(() => {
-    const names = new Map<string, string>();
-    for (const client of data.clients) if (client.companyName.trim()) names.set(normalize(client.companyName), client.companyName.trim());
-    for (const invoice of data.invoices) if (invoice.companyName.trim()) names.set(normalize(invoice.companyName), invoice.companyName.trim());
-    return [...names.values()].sort((a, b) => a.localeCompare(b));
-  }, [data.clients, data.invoices]);
+    return collectCompanyNames(data);
+  }, [data]);
 
   const groups = useMemo<StatementGroup[]>(() => {
     const search = normalize(query);

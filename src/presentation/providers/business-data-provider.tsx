@@ -5,7 +5,7 @@ import {
   type ImportResult,
 } from "@/application/services/excel-import";
 import workbook from "@/data/workbook-data.json";
-import type { BusinessDataSet } from "@/domain/entities/business";
+import type { BusinessDataSet, TrashItem } from "@/domain/entities/business";
 import { FirebaseBusinessDataRepository } from "@/infrastructure/firebase/business-data-repository";
 import { useAuth } from "@/presentation/providers/auth-provider";
 import {
@@ -46,6 +46,7 @@ interface BusinessDataContextValue {
   loading: boolean;
   syncState: SyncState;
   lastError: string;
+  trash: TrashItem[];
 
   importFile: (file: File) => Promise<ImportResult>;
 
@@ -63,6 +64,12 @@ interface BusinessDataContextValue {
     key: TKey,
     id: string,
   ) => Promise<void>;
+
+  restoreTrashItem: (trashId: string) => Promise<void>;
+
+  permanentlyDeleteTrashItem: (trashId: string) => Promise<void>;
+
+  emptyTrash: () => Promise<void>;
 
   patchRecord: <TKey extends CollectionKey>(
     key: TKey,
@@ -126,20 +133,29 @@ function normalizeCompanyEmail(value?: string) {
 
 const initialData: BusinessDataSet = {
   ...importedInitialData,
+  trash: [],
   quotations: importedInitialData.quotations.map((quotation) => ({
     ...quotation,
     serialNumber: ensureQuotationSerial(quotation.id, quotation.serialNumber),
   })),
 };
 
+const trashRetentionDays = 30;
+const dayInMs = 24 * 60 * 60 * 1000;
+
 function preserveCompanyProfile(next: BusinessDataSet): BusinessDataSet {
   const fallback = initialData.company;
   const company = next.company || fallback;
   const keep = (value: string | undefined, defaultValue: string) =>
     value?.trim() ? value : defaultValue;
+  const now = Date.now();
 
   return {
     ...next,
+    trash: (next.trash || []).filter((item) => {
+      const expires = new Date(item.deleteAfter).valueOf();
+      return Number.isNaN(expires) || expires > now;
+    }),
     quotations: next.quotations.map((quotation) => ({
       ...quotation,
       serialNumber: ensureQuotationSerial(quotation.id, quotation.serialNumber),
@@ -190,6 +206,35 @@ const isEntityWithId = (value: unknown): value is EntityWithId => {
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
+
+const addDaysIso = (date: Date, days: number) =>
+  new Date(date.valueOf() + days * dayInMs).toISOString();
+
+function getRecordLabel(key: CollectionKey, record: EntityMap[CollectionKey]) {
+  if (key === "projects") {
+    const project = record as EntityMap["projects"];
+    return project.id || project.company || "Project";
+  }
+
+  if (key === "quotations") {
+    const quotation = record as EntityMap["quotations"];
+    return quotation.id || quotation.companyName || "Quotation";
+  }
+
+  if (key === "invoices") {
+    const invoice = record as EntityMap["invoices"];
+    return invoice.id || invoice.companyName || "Invoice";
+  }
+
+  const client = record as EntityMap["clients"];
+  return client.companyName || client.id || "Client";
+}
+
+function getRecordCompany(key: CollectionKey, record: EntityMap[CollectionKey]) {
+  if (key === "projects") return (record as EntityMap["projects"]).company || "";
+  if (key === "clients") return (record as EntityMap["clients"]).companyName || "";
+  return (record as EntityMap["quotations"] | EntityMap["invoices"]).companyName || "";
+}
 
 function buildProjectFromQuotation(
   quotation: EntityMap["quotations"],
@@ -320,6 +365,33 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
     },
     [persistLocal, sync],
   );
+
+  useEffect(() => {
+    if (!data.trash?.length) return;
+
+    const purgeExpired = () => {
+      const now = Date.now();
+      const activeTrash = (data.trash || []).filter((item) => {
+        const expires = new Date(item.deleteAfter).valueOf();
+        return Number.isNaN(expires) || expires > now;
+      });
+
+      if (activeTrash.length === data.trash?.length) return;
+
+      saveInstant(
+        {
+          ...data,
+          trash: activeTrash,
+        },
+        "trash-auto-cleanup",
+      );
+    };
+
+    purgeExpired();
+    const timer = window.setInterval(purgeExpired, 60 * 60 * 1000);
+
+    return () => window.clearInterval(timer);
+  }, [data, saveInstant]);
 
   useEffect(() => {
     if (!user) {
@@ -545,22 +617,109 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
         throw new Error("Record id is required.");
       }
 
+      const record = data[key].find((item) => {
+        if (!isEntityWithId(item)) return false;
+        return item.id === id;
+      });
+
+      if (!record) {
+        throw new Error("Record not found.");
+      }
+
+      const deletedAt = new Date();
+      const trashItem: TrashItem = {
+        id: crypto.randomUUID(),
+        collection: key,
+        recordId: id,
+        label: getRecordLabel(key, record),
+        companyName: getRecordCompany(key, record),
+        deletedAt: deletedAt.toISOString(),
+        deleteAfter: addDaysIso(deletedAt, trashRetentionDays),
+        record,
+      };
+
       const next: BusinessDataSet = {
         ...data,
         [key]: data[key].filter((item) => {
           if (!isEntityWithId(item)) return true;
           return item.id !== id;
         }),
+        trash: [trashItem, ...(data.trash || [])],
       };
 
       saveInstant(next, `${key}-delete`);
 
-      if (key === "quotations" && user) {
-        await repository.releaseQuotationId(user.uid, id);
+    },
+    [data, saveInstant],
+  );
+
+  const restoreTrashItem = useCallback(
+    async (trashId: string) => {
+      const trash = data.trash || [];
+      const item = trash.find((entry) => entry.id === trashId);
+
+      if (!item) {
+        throw new Error("Trash item not found.");
+      }
+
+      if (
+        data[item.collection].some((record) => {
+          if (!isEntityWithId(record)) return false;
+          return record.id === item.recordId;
+        })
+      ) {
+        throw new Error(
+          `Cannot restore ${item.label} because another ${item.collection.slice(0, -1)} has the same id.`,
+        );
+      }
+
+      const next: BusinessDataSet = {
+        ...data,
+        [item.collection]: [item.record, ...data[item.collection]],
+        trash: trash.filter((entry) => entry.id !== trashId),
+      };
+
+      saveInstant(next, `${item.collection}-restore`);
+    },
+    [data, saveInstant],
+  );
+
+  const permanentlyDeleteTrashItem = useCallback(
+    async (trashId: string) => {
+      const trash = data.trash || [];
+      const item = trash.find((entry) => entry.id === trashId);
+      const next: BusinessDataSet = {
+        ...data,
+        trash: trash.filter((entry) => entry.id !== trashId),
+      };
+
+      saveInstant(next, "trash-delete");
+
+      if (item?.collection === "quotations" && user) {
+        await repository.releaseQuotationId(user.uid, item.recordId);
       }
     },
     [data, repository, saveInstant, user],
   );
+
+  const emptyTrash = useCallback(async () => {
+    const quotationIds = (data.trash || [])
+      .filter((item) => item.collection === "quotations")
+      .map((item) => item.recordId);
+
+    const next: BusinessDataSet = {
+      ...data,
+      trash: [],
+    };
+
+    saveInstant(next, "trash-empty");
+
+    if (user) {
+      await Promise.all(
+        quotationIds.map((id) => repository.releaseQuotationId(user.uid, id)),
+      );
+    }
+  }, [data, repository, saveInstant, user]);
 
   const createProject = useCallback(
     async (project: EntityMap["projects"]) => {
@@ -839,12 +998,16 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       loading,
       syncState,
       lastError,
+      trash: data.trash || [],
 
       importFile,
 
       createRecord,
       updateRecord,
       deleteRecord,
+      restoreTrashItem,
+      permanentlyDeleteTrashItem,
+      emptyTrash,
       patchRecord,
 
       createProject,
@@ -865,6 +1028,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       completeInvoicePayment,
       createInvoiceFromQuotation,
       createProject,
+      emptyTrash,
       createQuotation,
       createRecord,
       data,
@@ -874,6 +1038,8 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       lastError,
       loading,
       patchRecord,
+      permanentlyDeleteTrashItem,
+      restoreTrashItem,
       syncState,
       updateInvoicePayment,
       updateInvoiceStatus,

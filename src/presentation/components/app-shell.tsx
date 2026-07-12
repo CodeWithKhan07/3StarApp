@@ -15,6 +15,7 @@ import {
   FileBarChart,
   FileSpreadsheet,
   FileText,
+  History,
   Home,
   LayoutDashboard,
   Menu,
@@ -24,6 +25,7 @@ import {
   Search,
   Settings,
   Sun,
+  Trash2,
   Upload,
   Users,
   X,
@@ -44,6 +46,7 @@ const navGroups = [
       ["Quotations", routes.quotations, FileText],
       ["Invoices & Payments", routes.invoices, ReceiptText],
       ["Pending Payments", routes.pendingPayments, CircleDollarSign],
+      ["Pending PO", routes.pendingPo, FileText],
     ],
   },
   {
@@ -58,8 +61,10 @@ const navGroups = [
     label: "Insights & Data",
     items: [
       ["Statements", routes.statements, FileBarChart],
+      ["History", routes.history, History],
       ["Reports", routes.reports, BarChart3],
       ["Excel Import / Export", routes.excelExport, FileSpreadsheet],
+      ["Trash", routes.trash, Trash2],
     ],
   },
 ] as const;
@@ -116,6 +121,7 @@ function isActiveRoute(pathname: string, href: string) {
   if (href === routes.invoices && pathname.startsWith("/invoices")) return true;
   if (href === routes.excelExport && pathname.startsWith("/excel-export"))
     return true;
+  if (href === routes.trash && pathname.startsWith("/trash")) return true;
   return false;
 }
 
@@ -130,6 +136,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
   const [scrollSidebarHidden, setScrollSidebarHidden] = useState(false);
@@ -172,11 +179,16 @@ export function AppShell({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    setMobileOpen(false);
-    setSearchOpen(false);
-    setScrollSidebarHidden(false);
-    setSidebarHoverOpen(false);
-    setSidebarMode("auto");
+    const timer = window.setTimeout(() => {
+      setMobileOpen(false);
+      setSearchOpen(false);
+      setMobileSearchOpen(false);
+      setScrollSidebarHidden(false);
+      setSidebarHoverOpen(false);
+      setSidebarMode("auto");
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, [pathname]);
 
   useEffect(() => {
@@ -193,8 +205,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     }
 
     if (isDataEntryRoute) {
-      setScrollSidebarHidden(true);
-      return;
+      const timer = window.setTimeout(() => setScrollSidebarHidden(true), 0);
+      return () => window.clearTimeout(timer);
     }
 
     function handlePageScroll() {
@@ -383,8 +395,14 @@ export function AppShell({ children }: { children: ReactNode }) {
   function handleResultClick(href: string) {
     setSearch("");
     setSearchOpen(false);
+    setMobileSearchOpen(false);
     setMobileOpen(false);
     router.push(href);
+  }
+
+  function closeSearch() {
+    setSearchOpen(false);
+    setMobileSearchOpen(false);
   }
 
   function toggleDesktopSidebar() {
@@ -540,7 +558,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             <strong>3Star Business Suite</strong>
           </div>
 
-          <div className="topbar__search-wrap">
+          <div
+            className={`topbar__search-wrap ${
+              mobileSearchOpen ? "is-mobile-open" : ""
+            }`}
+          >
             <label className="topbar__search">
               <Search size={15} />
               <input
@@ -577,6 +599,19 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <div className="topbar__actions">
+            <button
+              className="topbar__mobile-search"
+              aria-label="Search records"
+              title="Search records"
+              type="button"
+              onClick={() => {
+                setMobileSearchOpen(true);
+                setSearchOpen(true);
+              }}
+            >
+              <Search size={17} />
+            </button>
+
             <Link
               className="button button--primary topbar__import"
               href={routes.excelExport}
@@ -624,12 +659,12 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
         </header>
 
-        {searchOpen && search.trim() ? (
+        {searchOpen && (search.trim() || mobileSearchOpen) ? (
           <button
             className="search-backdrop"
             aria-label="Close search"
             type="button"
-            onClick={() => setSearchOpen(false)}
+            onClick={closeSearch}
           />
         ) : null}
 
