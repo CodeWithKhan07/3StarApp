@@ -17,8 +17,10 @@ import {
   FileSpreadsheet,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 
 export default function DashboardPage() {
+  const router = useRouter();
   const { data, syncState } = useBusinessData();
   const { clients, invoices, projects } = data;
 
@@ -154,7 +156,16 @@ export default function DashboardPage() {
               <tbody>
                 {invoices.length ? (
                   invoices.slice(0, 8).map((invoice) => (
-                    <tr key={invoice.id}>
+                    <tr
+                      className="plain-data-row"
+                      key={invoice.id}
+                      // Dashboard rows open the same complete record view as feature lists.
+                      onClick={() =>
+                        router.push(
+                          `${routes.recordDetail}?type=invoice&id=${encodeURIComponent(invoice.id)}`,
+                        )
+                      }
+                    >
                       <td>{invoice.id}</td>
                       <td>{invoice.companyName}</td>
                       <td>{money(invoice.amount)}</td>
@@ -194,7 +205,15 @@ export default function DashboardPage() {
               <tbody>
                 {pending.length ? (
                   pending.slice(0, 8).map((invoice) => (
-                    <tr key={invoice.id}>
+                    <tr
+                      className="plain-data-row"
+                      key={invoice.id}
+                      onClick={() =>
+                        router.push(
+                          `${routes.recordDetail}?type=invoice&id=${encodeURIComponent(invoice.id)}`,
+                        )
+                      }
+                    >
                       <td>{invoice.companyName}</td>
                       <td>{invoice.followUpDate || "—"}</td>
                       <td>{money(invoice.amount - invoice.received)}</td>

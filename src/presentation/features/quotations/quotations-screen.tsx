@@ -1504,6 +1504,29 @@ export function QuotationsScreen() {
                       <article
                         className="mobile-record-card"
                         key={quotation.id}
+                        role="link"
+                        tabIndex={0}
+                        onClick={(event) => {
+                          // Keep nested controls interactive while the rest of the card opens full details.
+                          if (
+                            (event.target as HTMLElement).closest(
+                              "a, button, input, select, textarea",
+                            )
+                          ) {
+                            return;
+                          }
+                          router.push(
+                            `${routes.recordDetail}?type=quotation&id=${encodeURIComponent(quotation.id)}`,
+                          );
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            router.push(
+                              `${routes.recordDetail}?type=quotation&id=${encodeURIComponent(quotation.id)}`,
+                            );
+                          }
+                        }}
                       >
                         <header>
                           <div>
