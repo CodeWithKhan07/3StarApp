@@ -51,8 +51,7 @@ const invoiceStatusOptions: Array<{ label: string; value: Invoice["status"] }> =
   [
     { label: "Pending", value: "pending" },
     { label: "Partial", value: "partial" },
-    { label: "Pending PO", value: "po" },
-    { label: "Paid", value: "paid" },
+    { label: "Received / Paid", value: "paid" },
     { label: "Overdue", value: "overdue" },
   ];
 
@@ -294,7 +293,13 @@ export function ClientsScreen() {
   );
 }
 
-export function ProjectsScreen({ status }: { status?: Project["status"] }) {
+export function ProjectsScreen({
+  status,
+  billingView = "all",
+}: {
+  status?: Project["status"];
+  billingView?: "all" | "pending-po";
+}) {
   const router = useRouter();
   const { data, patchRecord, deleteRecord } = useBusinessData();
   const [query, setQuery] = useState("");
@@ -302,9 +307,20 @@ export function ProjectsScreen({ status }: { status?: Project["status"] }) {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const companyOptions = useMemo(() => collectCompanyNames(data), [data]);
-  const source = status
-    ? data.projects.filter((item) => item.status === status)
-    : data.projects;
+  const source = data.projects.filter((item) => {
+    const stage = item.billingStage || "ongoing";
+    if (billingView === "pending-po") {
+      return (
+        item.status !== "completed" &&
+        (stage === "pending-po" || stage === "po-done")
+      );
+    }
+    if (status && item.status !== status) return false;
+    if (status === "in-progress") {
+      return !["pending-po", "po-done", "payment-pending"].includes(stage);
+    }
+    return true;
+  });
   const filtered = source
     .filter(
       (item) =>
@@ -321,7 +337,9 @@ export function ProjectsScreen({ status }: { status?: Project["status"] }) {
         String(b.id).localeCompare(String(a.id), undefined, { numeric: true }),
     );
   const title =
-    status === "in-progress"
+    billingView === "pending-po"
+      ? "Pending PO"
+      : status === "in-progress"
       ? "Ongoing Projects"
       : status === "completed"
         ? "Completed Projects"
@@ -336,10 +354,30 @@ export function ProjectsScreen({ status }: { status?: Project["status"] }) {
   }
 
   async function changeProjectWorkState(project: Project, nextState: string) {
+    if (nextState === "pending-po") {
+      await patchRecord("projects", project.id, {
+        billingStage: "pending-po",
+        workCompleted: false,
+      });
+      return;
+    }
+    if (nextState === "po-done") {
+      await patchRecord("projects", project.id, {
+        billingStage: "po-done",
+        workCompleted: true,
+        completion: 100,
+      });
+      return;
+    }
+
     const workCompleted = nextState === "completed";
-    if (workCompleted === Boolean(project.workCompleted)) return;
+    if (
+      workCompleted === Boolean(project.workCompleted) &&
+      (project.billingStage || "ongoing") === "ongoing"
+    ) return;
     await patchRecord("projects", project.id, {
       workCompleted,
+      billingStage: "ongoing",
       completion: workCompleted
         ? 100
         : project.completion === 100
@@ -357,7 +395,11 @@ export function ProjectsScreen({ status }: { status?: Project["status"] }) {
     <>
       <PageHeader
         title={title}
-        description="Plain project list with quick details."
+        description={
+          billingView === "pending-po"
+            ? "Confirm the purchase order, then create the linked invoice."
+            : "Plain project list with quick details."
+        }
       />
       <section className="card plain-data-card">
         <Toolbar
@@ -429,12 +471,30 @@ export function ProjectsScreen({ status }: { status?: Project["status"] }) {
                     <td onClick={(event) => event.stopPropagation()}>
                       <select
                         className="inline-select status-inline-select"
-                        value={project.workCompleted ? "completed" : "pending"}
+                        value={
+                          billingView === "pending-po"
+                            ? project.billingStage === "po-done"
+                              ? "po-done"
+                              : "pending-po"
+                            : project.workCompleted
+                              ? "completed"
+                              : "pending"
+                        }
                         aria-label={`Change work status for project ${project.id}`}
                         onChange={(event) => void changeProjectWorkState(project, event.target.value)}
                       >
-                        <option value="pending">Pending</option>
-                        <option value="completed">Completed</option>
+                        {billingView === "pending-po" ? (
+                          <>
+                            <option value="pending-po">Pending PO</option>
+                            <option value="po-done">PO Done</option>
+                          </>
+                        ) : (
+                          <>
+                            <option value="pending">Pending</option>
+                            <option value="completed">Completed</option>
+                            <option value="pending-po">Pending PO</option>
+                          </>
+                        )}
                       </select>
                     </td>
                     <td onClick={(event) => event.stopPropagation()}>
@@ -513,7 +573,7 @@ export function InvoicesScreen({
     if (poOnly) return data.invoices.filter((item) => item.status === "po");
     if (pendingOnly)
       return data.invoices.filter((item) =>
-        ["pending", "partial", "overdue"].includes(item.status),
+        ["pending", "partial", "overdue", "po"].includes(item.status),
       );
     return data.invoices;
   }, [data.invoices, pendingOnly, poOnly]);
@@ -729,7 +789,7 @@ export function InvoicesScreen({
                       <select
                         className="inline-select status-inline-select"
                         aria-label={`Change status for invoice ${invoice.id}`}
-                        value={invoice.status}
+                        value={invoice.status === "po" ? "pending" : invoice.status}
                         onChange={(event) =>
                           void changeInvoiceStatus(invoice, event.target.value)
                         }
@@ -830,7 +890,7 @@ export function InvoicesScreen({
             <div className="form-actions">
               <button className="button" type="button" disabled={savingPayment} onClick={() => setPayingInvoice(null)}>Cancel</button>
               <button className="button button--primary" type="submit" disabled={savingPayment}>
-                {savingPayment ? "Saving..." : "Mark paid & save profit"}
+                {savingPayment ? "Saving..." : "Confirm paid"}
               </button>
             </div>
           </form>

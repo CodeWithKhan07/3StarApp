@@ -737,6 +737,17 @@ export function QuotationsScreen() {
         description={`Track quotations from submission to approval, then push them straight to invoicing. Cloud: ${syncState}.`}
         actions={
           <>
+            {showForm ? (
+              <button
+                className="button button--primary"
+                type="submit"
+                form="quotation-create-form"
+                disabled={submitting}
+              >
+                <Check size={14} />
+                {submitting ? "Saving..." : "Save Quotation"}
+              </button>
+            ) : null}
             <button
               className="button"
               type="button"
@@ -778,6 +789,17 @@ export function QuotationsScreen() {
           <p>{quotations.length} total · Cloud {syncState}</p>
         </div>
         <div className="mobile-quotation-hero__actions">
+          {showForm ? (
+            <button
+              className="button button--primary"
+              type="submit"
+              form="quotation-create-form"
+              disabled={submitting}
+            >
+              <Check size={18} />
+              {submitting ? "Saving..." : "Save"}
+            </button>
+          ) : null}
           <button
             className="button"
             type="button"
@@ -824,6 +846,7 @@ export function QuotationsScreen() {
 
       {showForm ? (
         <form
+          id="quotation-create-form"
           key={importDraft?.remarks || "manual"}
           className="card form-card"
           onSubmit={handleCreate}
@@ -906,12 +929,17 @@ export function QuotationsScreen() {
               <span>Store / Branch</span>
               <input
                 name="store"
-                placeholder="Store or branch"
+                placeholder="Enter the store or branch for this quotation"
                 value={quotationStore}
                 onChange={(event) => setQuotationStore(event.target.value)}
-                readOnly={clientSource === "saved" && Boolean(quotationStore)}
                 required
               />
+              {clientSource === "saved" ? (
+                <small>
+                  The saved client&apos;s default is prefilled. You can replace it
+                  with any store or branch for this quotation.
+                </small>
+              ) : null}
             </label>
 
             {clientSource === "new" ? (
@@ -1011,7 +1039,29 @@ export function QuotationsScreen() {
             </label>
           </div>
 
-          <div className="table-wrap">
+          <div className="quotation-items-toolbar">
+            <div>
+              <strong>Quotation Items</strong>
+              <span>
+                {lineItems.length} item{lineItems.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <button
+              className="button"
+              type="button"
+              onClick={() =>
+                setLineItems((items) => [
+                  ...items,
+                  emptyLineItem(items.length + 1),
+                ])
+              }
+            >
+              <Plus size={14} />
+              Add Item
+            </button>
+          </div>
+
+          <div className="table-wrap quotation-items-table-wrap">
             <table className="data-table project-line-items">
               <thead>
                 <tr>
@@ -1123,19 +1173,6 @@ export function QuotationsScreen() {
               {moneyOrEmpty(quotationTotals.vatAmount) || "—"} · Total:{" "}
               {moneyOrEmpty(quotationTotals.total) || "—"}
             </span>
-            <button
-              className="button"
-              type="button"
-              onClick={() =>
-                setLineItems((items) => [
-                  ...items,
-                  emptyLineItem(items.length + 1),
-                ])
-              }
-            >
-              <Plus size={14} />
-              Add Item
-            </button>
           </div>
 
           {formError ? (

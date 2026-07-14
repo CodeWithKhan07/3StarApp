@@ -178,6 +178,42 @@ function preserveCompanyProfile(next: BusinessDataSet): BusinessDataSet {
 
     return linkedQuotation;
   });
+  const invoices = next.invoices.map((invoice) => ({
+    ...invoice,
+    linkedProjectId:
+      invoice.linkedProjectId ||
+      quotations.find((quotation) => quotation.id === invoice.quotationNo)
+        ?.linkedProjectId,
+    supplierEmail: normalizeCompanyEmail(invoice.supplierEmail),
+    currency: invoice.currency || company.currency || fallback.currency,
+  }));
+  const lifecycleProjects = projects.map((project) => {
+    const invoice = invoices.find(
+      (item) => item.linkedProjectId === project.id,
+    );
+    if (!invoice) {
+      return {
+        ...project,
+        billingStage: project.billingStage || "ongoing",
+      };
+    }
+    if (invoice.status === "paid") {
+      return {
+        ...project,
+        workCompleted: true,
+        billingStage: "completed" as const,
+        status: "completed" as const,
+        completion: 100,
+        actualCompletion:
+          project.actualCompletion || invoice.paymentDate || invoice.invoiceDate,
+      };
+    }
+    return {
+      ...project,
+      workCompleted: true,
+      billingStage: "payment-pending" as const,
+    };
+  });
 
   return {
     ...next,
@@ -185,17 +221,9 @@ function preserveCompanyProfile(next: BusinessDataSet): BusinessDataSet {
       const expires = new Date(item.deleteAfter).valueOf();
       return Number.isNaN(expires) || expires > now;
     }),
-    projects,
+    projects: lifecycleProjects,
     quotations,
-    invoices: next.invoices.map((invoice) => ({
-      ...invoice,
-      linkedProjectId:
-        invoice.linkedProjectId ||
-        quotations.find((quotation) => quotation.id === invoice.quotationNo)
-          ?.linkedProjectId,
-      supplierEmail: normalizeCompanyEmail(invoice.supplierEmail),
-      currency: invoice.currency || company.currency || fallback.currency,
-    })),
+    invoices,
     company: {
       businessName: keep(company.businessName, fallback.businessName),
       legalCompanyName: keep(
@@ -275,6 +303,7 @@ function buildProjectFromQuotation(
     startDate: today(),
     expectedCompletion: "",
     completion: 0,
+    billingStage: "ongoing",
     status: "in-progress",
     priority: "medium",
   };
@@ -611,9 +640,26 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       const prepared = prepareRecordForSave(key, record);
       commitMutation(`${key}-create`, (current) => {
         assertUniqueRecordId(current, key, prepared.id);
+        const linkedProjectId =
+          key === "invoices"
+            ? (prepared as EntityMap["invoices"]).linkedProjectId
+            : undefined;
         return {
           ...current,
           [key]: [prepared, ...current[key]],
+          ...(linkedProjectId
+            ? {
+                projects: current.projects.map((project) =>
+                project.id === linkedProjectId
+                  ? prepareRecordForSave("projects", {
+                      ...project,
+                      workCompleted: true,
+                      billingStage: "payment-pending",
+                    })
+                  : project,
+                ),
+              }
+            : {}),
         } as BusinessDataSet;
       });
     },
@@ -941,7 +987,21 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
         };
         const prepared = prepareRecordForSave("invoices", invoice);
         assertUniqueRecordId(current, "invoices", prepared.id);
-        return { ...current, invoices: [prepared, ...current.invoices] };
+        return {
+          ...current,
+          invoices: [prepared, ...current.invoices],
+          projects: linkedProject
+            ? current.projects.map((project) =>
+                project.id === linkedProject.id
+                  ? prepareRecordForSave("projects", {
+                      ...project,
+                      workCompleted: true,
+                      billingStage: "payment-pending",
+                    })
+                  : project,
+              )
+            : current.projects,
+        };
       });
     },
     [commitMutation],
@@ -991,6 +1051,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
                     ? prepareRecordForSave("projects", {
                       ...project,
                       workCompleted: true,
+                      billingStage: "completed",
                       status: "completed",
                       completion: 100,
                       actualCompletion: paymentDate,

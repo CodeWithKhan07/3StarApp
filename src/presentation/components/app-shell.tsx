@@ -148,6 +148,52 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [sidebarHoverOpen, setSidebarHoverOpen] = useState(false);
   const scrollHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const navigationCounts = useMemo<Record<string, number>>(() => {
+    const ongoingProjects = data.projects.filter((project) => {
+      const stage = project.billingStage || "ongoing";
+      return (
+        project.status === "in-progress" &&
+        !["pending-po", "po-done", "payment-pending"].includes(stage)
+      );
+    }).length;
+    const pendingPoProjects = data.projects.filter((project) => {
+      const stage = project.billingStage || "ongoing";
+      return (
+        project.status !== "completed" &&
+        (stage === "pending-po" || stage === "po-done")
+      );
+    }).length;
+    const pendingInvoices = data.invoices.filter((invoice) =>
+      ["pending", "partial", "overdue", "po"].includes(invoice.status),
+    ).length;
+    const paidInvoices = data.invoices.filter(
+      (invoice) => invoice.status === "paid",
+    ).length;
+    const allRecords =
+      data.clients.length +
+      data.projects.length +
+      data.quotations.length +
+      data.invoices.length;
+
+    return {
+      [routes.clients]: data.clients.length,
+      [routes.quotations]: data.quotations.length,
+      [routes.ongoingProjects]: ongoingProjects,
+      [routes.invoices]: data.invoices.length,
+      [routes.pendingPayments]: pendingInvoices,
+      [routes.pendingPo]: pendingPoProjects,
+      [routes.projects]: data.projects.length,
+      [routes.completedProjects]: data.projects.filter(
+        (project) => project.status === "completed",
+      ).length,
+      [routes.analytics]: paidInvoices,
+      [routes.statements]: paidInvoices,
+      [routes.history]: allRecords,
+      [routes.reports]: allRecords,
+      [routes.trash]: data.trash?.length || 0,
+    };
+  }, [data]);
+
   const isDataEntryRoute =
     pathname.includes("/new") ||
     pathname.includes("/edit") ||
@@ -490,6 +536,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
               {group.items.map(([label, href, Icon]) => {
                 const isActive = isActiveRoute(pathname, href);
+                const count = navigationCounts[href];
 
                 return (
                   <Link
@@ -500,6 +547,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                   >
                     <Icon size={19} />
                     <span>{label}</span>
+                    {count !== undefined ? (
+                      <span className="navigation-count" aria-label={`${count} items`}>
+                        {count > 999 ? "999+" : count}
+                      </span>
+                    ) : null}
                   </Link>
                 );
               })}
@@ -692,6 +744,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <nav className="mobile-bottom-nav" aria-label="Mobile quick navigation">
           {mobileBottomItems.map(([label, href, Icon]) => {
             const isActive = isActiveRoute(pathname, href);
+            const count = navigationCounts[href];
 
             return (
               <Link
@@ -701,6 +754,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <Icon size={18} />
                 <span>{label}</span>
+                {count !== undefined ? (
+                  <span className="mobile-navigation-count" aria-label={`${count} items`}>
+                    {count > 99 ? "99+" : count}
+                  </span>
+                ) : null}
               </Link>
             );
           })}

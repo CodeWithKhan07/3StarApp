@@ -26,6 +26,7 @@ interface StatementGroup {
   received: number;
   balance: number;
   latestDate: string;
+  allInvoiceCount: number;
   runningBalances: Record<string, number>;
 }
 
@@ -49,8 +50,11 @@ export function StatementsScreen() {
     const result = companyNames.map((companyName) => {
       const key = normalize(companyName);
       const client = data.clients.find((item) => normalize(item.companyName) === key);
-      const invoices = data.invoices
-        .filter((invoice) => normalize(invoice.companyName) === key && inRange(invoice.invoiceDate, startDate, endDate))
+      const allCompanyInvoices = data.invoices.filter(
+        (invoice) => normalize(invoice.companyName) === key,
+      );
+      const invoices = allCompanyInvoices
+        .filter((invoice) => inRange(invoice.invoiceDate, startDate, endDate))
         .sort((a, b) => dateSort === "desc" ? b.invoiceDate.localeCompare(a.invoiceDate) : a.invoiceDate.localeCompare(b.invoiceDate));
       const taxable = invoices.reduce((sum, invoice) => sum + (invoice.subTotal ?? Math.max(0, invoice.amount - (invoice.vatAmount ?? 0))), 0);
       const vat = invoices.reduce((sum, invoice) => sum + (invoice.vatAmount ?? Math.max(0, invoice.amount - (invoice.subTotal ?? invoice.amount))), 0);
@@ -62,7 +66,7 @@ export function StatementsScreen() {
         running += invoice.amount - invoice.received;
         runningBalances[invoice.id] = running;
       }
-      return { companyName, client, invoices, taxable, vat, vatRate: taxable > 0 ? vat / taxable * 100 : 0, invoiced, received, balance: invoiced - received, latestDate: invoices.reduce((latest, invoice) => invoice.invoiceDate > latest ? invoice.invoiceDate : latest, ""), runningBalances };
+      return { companyName, client, invoices, taxable, vat, vatRate: taxable > 0 ? vat / taxable * 100 : 0, invoiced, received, balance: invoiced - received, latestDate: invoices.reduce((latest, invoice) => invoice.invoiceDate > latest ? invoice.invoiceDate : latest, ""), allInvoiceCount: allCompanyInvoices.length, runningBalances };
     }).filter((group) => {
       if (companyFilter !== "all" && normalize(group.companyName) !== companyFilter) return false;
       if (!search) return true;
@@ -86,9 +90,24 @@ export function StatementsScreen() {
 
   async function exportGroup(group: StatementGroup) {
     setError("");
-    if (!group.invoices.length) return setError(`There are no invoice lines in the selected period for ${group.companyName}.`);
+    const companyKey = normalize(group.companyName);
+    const allCompanyInvoices = data.invoices
+      .filter((invoice) => normalize(invoice.companyName) === companyKey)
+      .sort(
+        (a, b) =>
+          a.invoiceDate.localeCompare(b.invoiceDate) ||
+          a.id.localeCompare(b.id),
+      );
+    if (!allCompanyInvoices.length) return setError(`There are no invoice lines for ${group.companyName}.`);
     try {
-      await exportStatementPdf({ customerName: group.companyName, client: group.client, invoices: group.invoices, company: data.company, startDate, endDate });
+      await exportStatementPdf({
+        customerName: group.companyName,
+        client: group.client,
+        invoices: allCompanyInvoices,
+        company: data.company,
+        startDate: allCompanyInvoices[0]?.invoiceDate,
+        endDate: allCompanyInvoices.at(-1)?.invoiceDate,
+      });
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Statement export failed.");
     }
@@ -119,7 +138,7 @@ export function StatementsScreen() {
       {groups.length ? groups.map((group) => <article className="card statement-company-card" key={normalize(group.companyName)}>
         <header className="page-header statement-company-card__header">
           <div><span>ACCOUNT STATEMENT</span><h2>{group.companyName}</h2><p>{group.client?.brandName || group.client?.city || "Customer account"} · {group.invoices.length} transaction{group.invoices.length === 1 ? "" : "s"}{group.latestDate ? ` · Latest ${group.latestDate}` : ""}</p></div>
-          <button className="button button--primary" type="button" disabled={!group.invoices.length} onClick={() => void exportGroup(group)}><Download size={15}/>Export PDF</button>
+          <button className="button button--primary" type="button" disabled={!group.allInvoiceCount} onClick={() => void exportGroup(group)}><Download size={15}/>Export Full Statement</button>
         </header>
         <div className="metrics statement-card-metrics"><article className="metric-card card statement-metric-tile"><p>Before VAT</p><strong>{money(group.taxable)}</strong></article><article className="metric-card card statement-metric-tile"><p>VAT Percentage</p><strong>{group.vatRate.toFixed(2)}%</strong></article><article className="metric-card card statement-metric-tile"><p>Total VAT</p><strong>{money(group.vat)}</strong></article><article className="metric-card card statement-metric-tile"><p>Total After VAT</p><strong>{money(group.invoiced)}</strong></article><article className="metric-card card statement-metric-tile"><p>Payments</p><strong>{money(group.received)}</strong></article><article className="metric-card card statement-metric-tile statement-balance"><p>Outstanding</p><strong>{money(group.balance)}</strong></article></div>
         <div className="table-wrap"><table className="data-table statement-table"><thead><tr><th>Date</th><th>PO / Quotation</th><th>Invoice</th><th>Description</th><th>Before VAT</th><th>VAT %</th><th>Total VAT</th><th>Total After VAT</th><th>Credit</th><th>Balance</th><th>View</th></tr></thead><tbody>{group.invoices.length ? group.invoices.map((invoice) => { const quotation=findQuotation(invoice); const taxable=invoice.subTotal??Math.max(0,invoice.amount-(invoice.vatAmount??0)); const vat=invoice.vatAmount??Math.max(0,invoice.amount-taxable); const vatRate=invoice.vatRate??(taxable>0?vat/taxable*100:0); return <tr className="plain-data-row" key={invoice.id} onClick={() => router.push(`${routes.recordDetail}?type=invoice&id=${encodeURIComponent(invoice.id)}`)}><td>{invoice.invoiceDate||"—"}</td><td>{invoice.quotationNo||"—"}</td><td className="strong-cell">{invoice.id}</td><td><span className="description-cell">{invoice.project||"Services"}</span></td><td className="money-cell">{money(taxable)}</td><td className="money-cell">{vatRate.toFixed(2)}%</td><td className="money-cell">{money(vat)}</td><td className="money-cell">{money(invoice.amount)}</td><td className="money-cell">{money(invoice.received)}</td><td className="money-cell">{money(group.runningBalances[invoice.id] ?? 0)}</td><td><div className="row-actions" onClick={(event) => event.stopPropagation()}><Link className="icon-button" href={`${routes.editInvoice}?id=${encodeURIComponent(invoice.id)}`} title="Edit invoice"><ReceiptText size={15}/></Link>{quotation?<Link className="icon-button" href={`${routes.recordDetail}?type=quotation&id=${encodeURIComponent(quotation.id)}`} title="Open quotation details"><FileText size={15}/></Link>:null}</div></td></tr>; }) : <tr className="empty-row"><td colSpan={11}>No activity in the selected date range.</td></tr>}</tbody></table></div>

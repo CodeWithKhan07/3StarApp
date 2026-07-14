@@ -1,5 +1,5 @@
-import { InvoicesScreen } from "@/presentation/features/records/records-screens";
+import { ProjectsScreen } from "@/presentation/features/records/records-screens";
 
 export default function PendingPoPage() {
-  return <InvoicesScreen poOnly />;
+  return <ProjectsScreen billingView="pending-po" />;
 }
