@@ -26,26 +26,27 @@ export function NewInvoiceScreen() {
   const router = useRouter();
   const { data } = useBusinessData();
   const [source, setSource] = useState<InvoiceSource>("quotation");
-  const [quotationSerial, setQuotationSerial] = useState("");
+  const [projectId, setProjectId] = useState("");
   const [importDraft, setImportDraft] = useState<InvoiceImportDraft | null>(null);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const availableQuotations = data.quotations.filter(
-    (quotation) =>
-      !data.invoices.some(
-        (invoice) =>
-          invoice.quotationSerialNumber ===
-            (quotation.serialNumber || quotation.id) ||
-          (!invoice.quotationSerialNumber &&
-            invoice.quotationNo === quotation.id),
-      ),
+  const availableProjects = data.projects.filter((project) => {
+    const quotation = data.quotations.find(
+      (item) => item.linkedProjectId === project.id,
+    );
+    if (!quotation || !project.workCompleted || project.status === "completed") return false;
+    return !data.invoices.some(
+      (invoice) =>
+        invoice.linkedProjectId === project.id ||
+        invoice.quotationSerialNumber === quotation.serialNumber ||
+        (!invoice.quotationSerialNumber && invoice.quotationNo === quotation.id),
+    );
+  });
+  const selectedProjectId = projectId || availableProjects[0]?.id || "";
+  const selectedQuotation = data.quotations.find(
+    (quotation) => quotation.linkedProjectId === selectedProjectId,
   );
-  const selectedQuotationSerial =
-    quotationSerial ||
-    availableQuotations[0]?.serialNumber ||
-    availableQuotations[0]?.id ||
-    "";
 
   async function importInvoice(file?: File) {
     if (!file || importing) return;
@@ -128,7 +129,7 @@ export function NewInvoiceScreen() {
           onClick={() => setSource("quotation")}
         >
           <FileText size={17} />
-          Existing Quotation
+          Existing Project
         </button>
         <button
           className={source === "without-quotation" ? "is-active" : ""}
@@ -151,44 +152,50 @@ export function NewInvoiceScreen() {
       ) : (
         <section className="invoice-quotation-source">
           <header>
-            <h2>Invoice From Existing Quotation</h2>
-            <p>Select a quotation saved in the app. Its client and item data will be carried into the invoice.</p>
+            <h2>Invoice From Existing Project</h2>
+            <p>Select the project. Its linked quotation ID automatically supplies the client, items, VAT, and totals.</p>
           </header>
           <label className="field invoice-quotation-select">
-            <span>Quotation</span>
+            <span>Project</span>
             <select
-              value={selectedQuotationSerial}
-              onChange={(event) => setQuotationSerial(event.target.value)}
-              disabled={!availableQuotations.length}
+              value={selectedProjectId}
+              onChange={(event) => setProjectId(event.target.value)}
+              disabled={!availableProjects.length}
             >
-              {availableQuotations.length ? (
-                availableQuotations.map((quotation) => (
-                  <option
-                    key={quotation.serialNumber || quotation.id}
-                    value={quotation.serialNumber || quotation.id}
-                  >
-                    {quotation.id} - {quotation.companyName}
+              {availableProjects.length ? (
+                availableProjects.map((project) => (
+                  <option key={project.id} value={project.id}>
+                    {project.id} - {project.company} - {project.store || project.workDescription}
                   </option>
                 ))
               ) : (
-                <option value="">No uninvoiced quotations available</option>
+                <option value="">No uninvoiced projects available</option>
               )}
             </select>
           </label>
-          {selectedQuotationSerial ? (
-            <Link
-              className="button button--primary invoice-quotation-continue"
-              href={`${routes.quotationInvoice}?serial=${encodeURIComponent(selectedQuotationSerial)}`}
-            >
-              Continue With Quotation
-            </Link>
+          {selectedProjectId && selectedQuotation ? (
+            <div className="invoice-project-actions">
+              <Link
+                className="button"
+                href={`${routes.recordDetail}?type=quotation&id=${encodeURIComponent(selectedQuotation.id)}`}
+              >
+                <FileText size={15} />
+                Open Quotation
+              </Link>
+              <Link
+                className="button button--primary invoice-quotation-continue"
+                href={`${routes.quotationInvoice}?projectId=${encodeURIComponent(selectedProjectId)}`}
+              >
+                Continue With Project
+              </Link>
+            </div>
           ) : (
             <button
               className="button button--primary invoice-quotation-continue"
               type="button"
               disabled
             >
-              Continue With Quotation
+              Continue With Project
             </button>
           )}
         </section>

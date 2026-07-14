@@ -161,11 +161,16 @@ function createImportedLineItems(
 }
 
 export function QuotationInvoiceScreen() {
-  const serial = useSearchParams().get("serial") || "";
+  const searchParams = useSearchParams();
+  const serial = searchParams.get("serial") || "";
+  const projectId = searchParams.get("projectId") || "";
   const { data, createRecord } = useBusinessData();
 
   const quotation = data.quotations.find(
-    (item) => item.serialNumber === serial || item.id === serial,
+    (item) =>
+      (projectId && item.linkedProjectId === projectId) ||
+      item.serialNumber === serial ||
+      item.id === serial,
   );
 
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -216,6 +221,7 @@ export function QuotationInvoiceScreen() {
   }
 
   const quotationId = quotation.id;
+  const quotationLinkedProjectId = quotation.linkedProjectId;
   const quotationSerialNumber = quotation.serialNumber ?? quotation.id;
   const quotationCompanyName = quotation.companyName;
   const quotationStore = quotation.store ?? "";
@@ -321,6 +327,7 @@ export function QuotationInvoiceScreen() {
 
       const record: Invoice = {
         id: invoiceId,
+        linkedProjectId: quotationLinkedProjectId,
         companyName: formValue(form, "companyName") || quotationCompanyName,
         project:
           formValue(form, "project") || quotationStore || quotationScopeOfWork,
@@ -406,10 +413,19 @@ export function QuotationInvoiceScreen() {
         title={invoice ? "Quotation Invoice" : "Create Invoice"}
         description={`${quotationCompanyName} · ${quotationId} · Serial ${quotationSerialNumber}`}
         actions={
-          <Link className="button" href={routes.quotations}>
-            <ArrowLeft size={14} />
-            Back to Quotations
-          </Link>
+          <>
+            <Link className="button" href={routes.quotations}>
+              <ArrowLeft size={14} />
+              Back to Quotations
+            </Link>
+            <Link
+              className="button button--primary"
+              href={`${routes.recordDetail}?type=quotation&id=${encodeURIComponent(quotationId)}`}
+            >
+              <ExternalLink size={14} />
+              Open Quotation
+            </Link>
+          </>
         }
       />
 

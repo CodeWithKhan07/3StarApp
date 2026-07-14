@@ -45,6 +45,7 @@ const navGroups = [
     items: [
       ["Clients", routes.clients, Users],
       ["Quotations", routes.quotations, FileText],
+      ["Ongoing Projects", routes.ongoingProjects, CircleDollarSign],
       ["Invoices & Payments", routes.invoices, ReceiptText],
       ["Pending Payments", routes.pendingPayments, CircleDollarSign],
       ["Pending PO", routes.pendingPo, FileText],
@@ -54,13 +55,13 @@ const navGroups = [
     label: "Operations",
     items: [
       ["Projects", routes.projects, BriefcaseBusiness],
-      ["Ongoing Projects", routes.ongoingProjects, CircleDollarSign],
       ["Completed Projects", routes.completedProjects, CheckCircle2],
     ],
   },
   {
     label: "Insights & Data",
     items: [
+      ["Income & Profit", routes.analytics, CircleDollarSign],
       ["Statements", routes.statements, FileBarChart],
       ["History", routes.history, History],
       ["Reports", routes.reports, BarChart3],

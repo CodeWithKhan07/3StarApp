@@ -80,7 +80,7 @@ interface BusinessDataContextValue {
     draft: Partial<EntityMap["invoices"]>,
   ) => Promise<void>;
 
-  completeInvoicePayment: (id: string) => Promise<void>;
+  completeInvoicePayment: (id: string, profitAmount: number) => Promise<void>;
 
   updateProjectStatus: (
     id: string,
@@ -142,6 +142,42 @@ function preserveCompanyProfile(next: BusinessDataSet): BusinessDataSet {
   const keep = (value: string | undefined, defaultValue: string) =>
     value?.trim() ? value : defaultValue;
   const now = Date.now();
+  const projects = [...next.projects];
+  const reservedProjectIds = [
+    ...projects.map((project) => project.id),
+    ...next.quotations.map((quotation) => quotation.linkedProjectId || ""),
+  ];
+  const quotations = next.quotations.map((quotation) => {
+    const existingProject = projects.find(
+      (project) =>
+        project.id === quotation.linkedProjectId ||
+        project.quotationNo === quotation.id,
+    );
+    const linkedProjectId =
+      existingProject?.id ||
+      quotation.linkedProjectId ||
+      createNextProjectId(reservedProjectIds);
+    reservedProjectIds.push(linkedProjectId);
+    const linkedQuotation = {
+      ...quotation,
+      linkedProjectId,
+      serialNumber: ensureQuotationSerial(quotation.id, quotation.serialNumber),
+      currency: quotation.currency || company.currency || fallback.currency,
+      vatRate: quotation.vatRate ?? company.vatRate ?? fallback.vatRate,
+    };
+
+    if (quotation.status === "approved" && !existingProject) {
+      projects.unshift(
+        buildProjectFromQuotation(
+          linkedQuotation,
+          projects.map((project) => project.id),
+          linkedProjectId,
+        ),
+      );
+    }
+
+    return linkedQuotation;
+  });
 
   return {
     ...next,
@@ -149,15 +185,14 @@ function preserveCompanyProfile(next: BusinessDataSet): BusinessDataSet {
       const expires = new Date(item.deleteAfter).valueOf();
       return Number.isNaN(expires) || expires > now;
     }),
-    quotations: next.quotations.map((quotation) => ({
-      ...quotation,
-      serialNumber: ensureQuotationSerial(quotation.id, quotation.serialNumber),
-      // Legacy/imported rows may predate explicit financial metadata.
-      currency: quotation.currency || company.currency || fallback.currency,
-      vatRate: quotation.vatRate ?? company.vatRate ?? fallback.vatRate,
-    })),
+    projects,
+    quotations,
     invoices: next.invoices.map((invoice) => ({
       ...invoice,
+      linkedProjectId:
+        invoice.linkedProjectId ||
+        quotations.find((quotation) => quotation.id === invoice.quotationNo)
+          ?.linkedProjectId,
       supplierEmail: normalizeCompanyEmail(invoice.supplierEmail),
       currency: invoice.currency || company.currency || fallback.currency,
     })),
@@ -227,9 +262,10 @@ function getRecordCompany(key: CollectionKey, record: EntityMap[CollectionKey]) 
 function buildProjectFromQuotation(
   quotation: EntityMap["quotations"],
   existingProjectIds: string[],
+  assignedProjectId?: string,
 ): EntityMap["projects"] {
   return {
-    id: createNextProjectId(existingProjectIds),
+    id: assignedProjectId || createNextProjectId(existingProjectIds),
     company: quotation.companyName,
     store: quotation.store ?? "",
     workDescription: quotation.scopeOfWork,
@@ -515,6 +551,10 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
           ? parsed.quotations
           : current.quotations;
         const linkedProjects = [...projects];
+        const lifecycleProjectIds = [
+          ...linkedProjects.map((item) => item.id),
+          ...quotations.map((item) => item.linkedProjectId || ""),
+        ];
         const linkedQuotations = quotations.map((quotation) => {
           const serialized = prepareRecordForSave("quotations", {
             ...quotation,
@@ -523,19 +563,32 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
               quotation.serialNumber,
             ),
           });
-          if (serialized.linkedProjectId) return serialized;
-
-          const hasProject = linkedProjects.some(
-            (project) => project.quotationNo === serialized.id,
+          const existingProject = linkedProjects.find(
+            (project) =>
+              project.id === serialized.linkedProjectId ||
+              project.quotationNo === serialized.id,
           );
-          if (hasProject) return serialized;
+          const projectId =
+            existingProject?.id ||
+            serialized.linkedProjectId ||
+            createNextProjectId(lifecycleProjectIds);
+          lifecycleProjectIds.push(projectId);
+          const linkedQuotation = { ...serialized, linkedProjectId: projectId };
 
-          const project = buildProjectFromQuotation(
-            serialized,
-            linkedProjects.map((item) => item.id),
-          );
-          linkedProjects.unshift(project);
-          return { ...serialized, linkedProjectId: project.id };
+          if (serialized.status === "approved" && !existingProject) {
+            linkedProjects.unshift(
+              prepareRecordForSave(
+                "projects",
+                buildProjectFromQuotation(
+                  linkedQuotation,
+                  linkedProjects.map((item) => item.id),
+                  projectId,
+                ),
+              ),
+            );
+          }
+
+          return linkedQuotation;
         });
 
         return {
@@ -753,18 +806,28 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       try {
         commitMutation("quotations-create", (current) => {
           assertUniqueRecordId(current, "quotations", prepared.id);
-          const project = prepareRecordForSave(
-            "projects",
-            buildProjectFromQuotation(
-              prepared,
-              current.projects.map((item) => item.id),
-            ),
-          );
-          assertUniqueRecordId(current, "projects", project.id);
+          const projectId =
+            prepared.linkedProjectId ||
+            createNextProjectId([
+              ...current.projects.map((item) => item.id),
+              ...current.quotations.map((item) => item.linkedProjectId || ""),
+            ]);
           const linkedQuotation: EntityMap["quotations"] = {
             ...prepared,
-            linkedProjectId: project.id,
+            linkedProjectId: projectId,
           };
+          const project =
+            prepared.status === "approved"
+              ? prepareRecordForSave(
+                  "projects",
+                  buildProjectFromQuotation(
+                    linkedQuotation,
+                    current.projects.map((item) => item.id),
+                    projectId,
+                  ),
+                )
+              : null;
+          if (project) assertUniqueRecordId(current, "projects", project.id);
           const normalizedClientName = prepared.companyName.toLocaleLowerCase();
           const shouldCreateClient = !current.clients.some(
             (client) =>
@@ -794,7 +857,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
             ...current,
             clients: autoClient ? [autoClient, ...current.clients] : current.clients,
             quotations: [linkedQuotation, ...current.quotations],
-            projects: [project, ...current.projects],
+            projects: project ? [project, ...current.projects] : current.projects,
           };
         });
       } catch (error) {
@@ -827,12 +890,24 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
           );
         }
 
+        const linkedProject = current.projects.find(
+          (project) =>
+            project.id === quotation.linkedProjectId ||
+            project.quotationNo === quotation.id,
+        );
+
         const invoice: EntityMap["invoices"] = {
         id:
           draft.id?.trim() ||
           createNextInvoiceId(current.invoices.map((item) => item.id)),
         companyName: quotation.companyName,
-        project: quotation.store || quotation.companyName,
+        project:
+          linkedProject?.workDescription ||
+          linkedProject?.id ||
+          quotation.scopeOfWork ||
+          quotation.store ||
+          quotation.companyName,
+        linkedProjectId: linkedProject?.id || quotation.linkedProjectId,
         quotationNo: quotation.id,
         quotationSerialNumber: quotation.serialNumber,
         invoiceDate: draft.invoiceDate || today(),
@@ -873,21 +948,32 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
   );
 
   const completeInvoicePayment = useCallback(
-    async (id: string) => {
+    async (id: string, profitAmount: number) => {
       commitMutation("invoices-complete-payment", (current) => {
         const invoice = current.invoices.find((item) =>
           recordIdsEqual("invoices", item.id, id),
         );
         if (!invoice) throw new Error("Invoice not found.");
+        if (!Number.isFinite(profitAmount) || profitAmount < 0) {
+          throw new Error("Profit must be zero or a positive amount.");
+        }
+        if (profitAmount > invoice.amount) {
+          throw new Error("Profit cannot exceed the invoice total.");
+        }
 
         const paymentDate = today();
         const updatedInvoice = prepareRecordForSave("invoices", {
           ...invoice,
           received: invoice.amount,
+          profitAmount,
+          profitRecordedAt: paymentDate,
           status: "paid",
           paymentDate,
         });
         const linkedProject = current.projects.find((project) => {
+          if (invoice.linkedProjectId) {
+            return project.id === invoice.linkedProjectId;
+          }
           if (invoice.quotationNo) {
             return project.quotationNo === invoice.quotationNo;
           }
@@ -902,8 +988,9 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
           projects: linkedProject
             ? current.projects.map((project) =>
                 project.id === linkedProject.id
-                  ? prepareRecordForSave("projects", {
+                    ? prepareRecordForSave("projects", {
                       ...project,
+                      workCompleted: true,
                       status: "completed",
                       completion: 100,
                       actualCompletion: paymentDate,
@@ -938,11 +1025,48 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
         ? TStatus
         : string,
     ) => {
-      await patchRecord("quotations", id, {
-        status,
-      } as Partial<EntityMap["quotations"]>);
+      commitMutation("quotation-status", (current) => {
+        const quotation = current.quotations.find((item) =>
+          recordIdsEqual("quotations", item.id, id),
+        );
+        if (!quotation) throw new Error("Quotation not found.");
+
+        const projectId =
+          quotation.linkedProjectId ||
+          createNextProjectId([
+            ...current.projects.map((project) => project.id),
+            ...current.quotations.map((item) => item.linkedProjectId || ""),
+          ]);
+        const updatedQuotation = prepareRecordForSave("quotations", {
+          ...quotation,
+          linkedProjectId: projectId,
+          status,
+        });
+        const projectExists = current.projects.some(
+          (project) => project.id === projectId,
+        );
+        const shouldCreateProject = status === "approved" && !projectExists;
+        const project = shouldCreateProject
+          ? prepareRecordForSave(
+              "projects",
+              buildProjectFromQuotation(
+                updatedQuotation,
+                current.projects.map((item) => item.id),
+                projectId,
+              ),
+            )
+          : null;
+
+        return {
+          ...current,
+          quotations: current.quotations.map((item) =>
+            recordIdsEqual("quotations", item.id, id) ? updatedQuotation : item,
+          ),
+          projects: project ? [project, ...current.projects] : current.projects,
+        };
+      });
     },
-    [patchRecord],
+    [commitMutation],
   );
 
   const updateInvoiceStatus = useCallback(

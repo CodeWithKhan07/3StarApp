@@ -1,6 +1,7 @@
 "use client";
 
 import type { Invoice, Project } from "@/domain/entities/business";
+import { exportInvoicePdf } from "@/application/services/document-export";
 import { matchesRecordQuery } from "@/application/services/record-query";
 import { routes } from "@/lib/routes";
 import {
@@ -15,7 +16,7 @@ import {
     collectCompanyNames,
     normalizeCompanyKey,
 } from "@/presentation/utils/company-filters";
-import { Plus, Search } from "lucide-react";
+import { Edit3, FileText, Plus, Printer, ReceiptText, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, type ReactNode } from "react";
@@ -295,7 +296,7 @@ export function ClientsScreen() {
 
 export function ProjectsScreen({ status }: { status?: Project["status"] }) {
   const router = useRouter();
-  const { data } = useBusinessData();
+  const { data, patchRecord, deleteRecord } = useBusinessData();
   const [query, setQuery] = useState("");
   const [company, setCompany] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
@@ -325,6 +326,32 @@ export function ProjectsScreen({ status }: { status?: Project["status"] }) {
       : status === "completed"
         ? "Completed Projects"
         : "Projects";
+
+  function linkedQuotation(project: Project) {
+    return data.quotations.find(
+      (quotation) =>
+        quotation.linkedProjectId === project.id ||
+        quotation.id === project.quotationNo,
+    );
+  }
+
+  async function changeProjectWorkState(project: Project, nextState: string) {
+    const workCompleted = nextState === "completed";
+    if (workCompleted === Boolean(project.workCompleted)) return;
+    await patchRecord("projects", project.id, {
+      workCompleted,
+      completion: workCompleted
+        ? 100
+        : project.completion === 100
+          ? 0
+          : project.completion,
+    });
+  }
+
+  async function deleteProject(project: Project) {
+    if (!window.confirm(`Delete project ${project.id}? You can restore it from Trash.`)) return;
+    await deleteRecord("projects", project.id);
+  }
 
   return (
     <>
@@ -368,13 +395,24 @@ export function ProjectsScreen({ status }: { status?: Project["status"] }) {
                 <th>Value</th>
                 <th>Completion</th>
                 <th>Status</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length ? (
-                filtered.map((project) => (
+                filtered.map((project) => {
+                  const quotation = linkedQuotation(project);
+                  const invoice = quotation
+                    ? data.invoices.find(
+                        (item) =>
+                          item.quotationSerialNumber === quotation.serialNumber ||
+                          (!item.quotationSerialNumber && item.quotationNo === quotation.id),
+                      )
+                    : undefined;
+
+                  return (
                   <tr
-                    className="plain-data-row"
+                    className={`plain-data-row${project.workCompleted && project.status !== "completed" ? " project-work-complete" : ""}`}
                     key={project.id}
                     onClick={() =>
                       router.push(
@@ -388,13 +426,56 @@ export function ProjectsScreen({ status }: { status?: Project["status"] }) {
                     <td>{project.startDate || "-"}</td>
                     <td>{money(project.value)}</td>
                     <td>{project.completion}%</td>
-                    <td>
-                      <StatusBadge value={project.status} />
+                    <td onClick={(event) => event.stopPropagation()}>
+                      <select
+                        className="inline-select status-inline-select"
+                        value={project.workCompleted ? "completed" : "pending"}
+                        aria-label={`Change work status for project ${project.id}`}
+                        onChange={(event) => void changeProjectWorkState(project, event.target.value)}
+                      >
+                        <option value="pending">Pending</option>
+                        <option value="completed">Completed</option>
+                      </select>
+                    </td>
+                    <td onClick={(event) => event.stopPropagation()}>
+                      <div className="row-actions project-row-actions">
+                        {project.workCompleted && quotation ? (
+                          <Link
+                            className="button button--primary project-invoice-action"
+                            href={
+                              invoice
+                                ? `${routes.editInvoice}?id=${encodeURIComponent(invoice.id)}`
+                                : `${routes.quotationInvoice}?projectId=${encodeURIComponent(project.id)}`
+                            }
+                          >
+                            <ReceiptText size={15} />
+                            {invoice ? "Open Invoice" : "Create Invoice"}
+                          </Link>
+                        ) : null}
+                        <Link
+                          className="icon-button"
+                          href={`${routes.editProject}?id=${encodeURIComponent(project.id)}`}
+                          title={`Edit project ${project.id}`}
+                          aria-label={`Edit project ${project.id}`}
+                        >
+                          <Edit3 size={16} />
+                        </Link>
+                        <button
+                          className="icon-button icon-button--danger"
+                          type="button"
+                          title={`Delete project ${project.id}`}
+                          aria-label={`Delete project ${project.id}`}
+                          onClick={() => void deleteProject(project)}
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                ))
+                  );
+                })
               ) : (
-                <EmptyTableRow columns={7} />
+                <EmptyTableRow columns={8} />
               )}
             </tbody>
           </table>
@@ -412,12 +493,21 @@ export function InvoicesScreen({
   poOnly?: boolean;
 }) {
   const router = useRouter();
-  const { data } = useBusinessData();
+  const {
+    data,
+    updateInvoiceStatus,
+    completeInvoicePayment,
+    deleteRecord,
+  } = useBusinessData();
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("all");
   const [company, setCompany] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [payingInvoice, setPayingInvoice] = useState<Invoice | null>(null);
+  const [profitInput, setProfitInput] = useState("");
+  const [paymentError, setPaymentError] = useState("");
+  const [savingPayment, setSavingPayment] = useState(false);
   const companyOptions = useMemo(() => collectCompanyNames(data), [data]);
   const source = useMemo(() => {
     if (poOnly) return data.invoices.filter((item) => item.status === "po");
@@ -467,6 +557,63 @@ export function InvoicesScreen({
     : pendingOnly
       ? "Pending Payments"
       : "Invoices & Payments";
+
+  async function changeInvoiceStatus(invoice: Invoice, nextStatus: string) {
+    if (nextStatus === invoice.status) return;
+    if (nextStatus === "paid") {
+      setPayingInvoice(invoice);
+      setProfitInput(
+        invoice.profitAmount === undefined ? "" : String(invoice.profitAmount),
+      );
+      setPaymentError("");
+      return;
+    }
+    await updateInvoiceStatus(invoice.id, nextStatus as Invoice["status"]);
+  }
+
+  async function confirmPaidInvoice(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!payingInvoice) return;
+    const profitAmount = Number(profitInput);
+    if (!profitInput.trim() || !Number.isFinite(profitAmount) || profitAmount < 0) {
+      setPaymentError("Enter the profit earned from this invoice. Use 0 if there was no profit.");
+      return;
+    }
+    if (profitAmount > payingInvoice.amount) {
+      setPaymentError("Profit cannot be greater than the invoice total.");
+      return;
+    }
+
+    setSavingPayment(true);
+    setPaymentError("");
+    try {
+      await completeInvoicePayment(payingInvoice.id, profitAmount);
+      setPayingInvoice(null);
+      setProfitInput("");
+    } catch (caught) {
+      setPaymentError(caught instanceof Error ? caught.message : "Payment could not be completed.");
+    } finally {
+      setSavingPayment(false);
+    }
+  }
+
+  async function deleteInvoice(invoice: Invoice) {
+    if (!window.confirm(`Delete invoice ${invoice.id}? You can restore it from Trash.`)) return;
+    await deleteRecord("invoices", invoice.id);
+  }
+
+  async function printInvoice(invoice: Invoice) {
+    await exportInvoicePdf(invoice, data.company);
+  }
+
+  function linkedQuotationForInvoice(invoice: Invoice) {
+    return data.quotations.find(
+      (quotation) =>
+        quotation.linkedProjectId === invoice.linkedProjectId ||
+        quotation.serialNumber === invoice.quotationSerialNumber ||
+        quotation.id === invoice.quotationNo,
+    );
+  }
 
   return (
     <>
@@ -551,6 +698,7 @@ export function InvoicesScreen({
                 <th>Due Date</th>
                 <th>Amount</th>
                 <th>Balance Due</th>
+                <th>Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -577,23 +725,117 @@ export function InvoicesScreen({
                       <br />
                       <small>{invoice.project || "No project"}</small>
                     </td>
-                    <td>
-                      <StatusBadge value={invoice.status} />
+                    <td onClick={(event) => event.stopPropagation()}>
+                      <select
+                        className="inline-select status-inline-select"
+                        aria-label={`Change status for invoice ${invoice.id}`}
+                        value={invoice.status}
+                        onChange={(event) =>
+                          void changeInvoiceStatus(invoice, event.target.value)
+                        }
+                      >
+                        {invoiceStatusOptions.map((item) => (
+                          <option key={item.value} value={item.value}>
+                            {item.label}
+                          </option>
+                        ))}
+                      </select>
                     </td>
                     <td>{invoice.dueDate || invoice.followUpDate || "-"}</td>
                     <td className="money-cell">{money(invoice.amount)}</td>
                     <td className="money-cell">
                       {money(invoice.amount - invoice.received)}
                     </td>
+                    <td onClick={(event) => event.stopPropagation()}>
+                      <div className="row-actions">
+                        <button
+                          className="icon-button"
+                          type="button"
+                          title={`Print invoice ${invoice.id}`}
+                          aria-label={`Print invoice ${invoice.id}`}
+                          onClick={() => void printInvoice(invoice)}
+                        >
+                          <Printer size={17} />
+                        </button>
+                        {linkedQuotationForInvoice(invoice) ? (
+                          <Link
+                            className="icon-button"
+                            href={`${routes.recordDetail}?type=quotation&id=${encodeURIComponent(linkedQuotationForInvoice(invoice)!.id)}`}
+                            title={`Open quotation for ${invoice.id}`}
+                            aria-label={`Open quotation for invoice ${invoice.id}`}
+                          >
+                            <FileText size={17} />
+                          </Link>
+                        ) : null}
+                        <Link
+                          className="icon-button"
+                          href={`${routes.editInvoice}?id=${encodeURIComponent(invoice.id)}`}
+                          title={`Edit invoice ${invoice.id}`}
+                          aria-label={`Edit invoice ${invoice.id}`}
+                        >
+                          <Edit3 size={17} />
+                        </Link>
+                        <button
+                          className="icon-button icon-button--danger"
+                          type="button"
+                          title={`Delete invoice ${invoice.id}`}
+                          aria-label={`Delete invoice ${invoice.id}`}
+                          onClick={() => void deleteInvoice(invoice)}
+                        >
+                          <Trash2 size={17} />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               ) : (
-                <EmptyTableRow columns={8} message="No invoices found." />
+                <EmptyTableRow columns={9} message="No invoices found." />
               )}
             </tbody>
           </table>
         </div>
       </section>
+
+      {payingInvoice ? (
+        <div className="modal-backdrop profit-dialog-backdrop" role="presentation">
+          <form
+            className="modal-card card profit-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="profit-dialog-title"
+            onSubmit={(event) => void confirmPaidInvoice(event)}
+          >
+            <header className="modal-card__header">
+              <div>
+                <h2 id="profit-dialog-title">Complete payment</h2>
+                <p>{payingInvoice.id} · {payingInvoice.companyName}</p>
+              </div>
+            </header>
+            <div className="profit-dialog-summary">
+              <span>Invoice income</span>
+              <strong>{money(payingInvoice.amount)}</strong>
+            </div>
+            <label className="field">
+              <span>Profit earned (SAR)</span>
+              <input
+                autoFocus
+                inputMode="decimal"
+                value={profitInput}
+                onChange={(event) => setProfitInput(event.target.value.replace(/[^0-9.]/g, ""))}
+                placeholder="0.00"
+                required
+              />
+            </label>
+            {paymentError ? <div className="form-message form-message--error">{paymentError}</div> : null}
+            <div className="form-actions">
+              <button className="button" type="button" disabled={savingPayment} onClick={() => setPayingInvoice(null)}>Cancel</button>
+              <button className="button button--primary" type="submit" disabled={savingPayment}>
+                {savingPayment ? "Saving..." : "Mark paid & save profit"}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
     </>
   );
 }

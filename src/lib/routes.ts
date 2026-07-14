@@ -35,6 +35,7 @@ export const routes = {
   trash: "/trash",
 
   reports: "/reports",
+  analytics: "/analytics",
   settings: "/settings",
 } as const;
 

@@ -35,6 +35,7 @@ export interface Project {
   expectedCompletion: string;
   actualCompletion?: string;
   completion: number;
+  workCompleted?: boolean;
   status: ProjectStatus;
   priority: "low" | "medium" | "high" | "urgent";
   remarks?: string;
@@ -114,6 +115,7 @@ export interface Quotation {
 
 export interface Invoice {
   id: string;
+  linkedProjectId?: string;
   companyName: string;
   project: string;
   quotationNo?: string;
@@ -123,6 +125,8 @@ export interface Invoice {
   paymentTerms?: string;
   amount: number;
   received: number;
+  profitAmount?: number;
+  profitRecordedAt?: string;
   paymentDate?: string;
   paymentMode?: string;
   status: PaymentStatus;

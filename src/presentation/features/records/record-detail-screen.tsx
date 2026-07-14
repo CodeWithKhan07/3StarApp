@@ -11,10 +11,10 @@ import type {
   Quotation,
 } from "@/domain/entities/business";
 import { routes } from "@/lib/routes";
-import { PageHeader, StatusBadge } from "@/presentation/components/ui";
+import { DateRangeFields, PageHeader, StatusBadge } from "@/presentation/components/ui";
 import { money } from "@/presentation/data/sample-data";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
-import { ArrowLeft, Download, Edit3, Printer, Trash2 } from "lucide-react";
+import { ArrowLeft, Download, Edit3, FileText, Printer, ReceiptText, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -144,6 +144,7 @@ function projectDetail(record: Project): RecordDetail {
           field("Priority", record.priority),
           field("Status", record.status),
           field("Completion", `${record.completion}%`),
+          field("Work completed", record.workCompleted),
           field("Work description", record.workDescription),
         ],
       },
@@ -298,6 +299,7 @@ function invoiceDetail(record: Invoice): RecordDetail {
         title: "Invoice overview",
         fields: [
           field("Invoice number", record.id),
+          field("Linked project ID", record.linkedProjectId),
           field("UUID", record.uuid),
           field("Company", record.companyName),
           field("Project", record.project),
@@ -323,6 +325,8 @@ function invoiceDetail(record: Invoice): RecordDetail {
           field("Discount", amount(record.discountAmount)),
           field("Total amount", amount(record.amount)),
           field("Received", amount(record.received)),
+          field("Profit earned", amount(record.profitAmount)),
+          field("Profit recorded", record.profitRecordedAt),
           field("Balance due", amount(record.amount - record.received)),
         ],
       },
@@ -384,6 +388,10 @@ export function RecordDetailScreen() {
   const { data, deleteRecord } = useBusinessData();
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const [quotationFrom, setQuotationFrom] = useState("");
+  const [quotationTo, setQuotationTo] = useState("");
+  const [invoiceFrom, setInvoiceFrom] = useState("");
+  const [invoiceTo, setInvoiceTo] = useState("");
   const type = (params.get("type") || "") as RecordType;
   const id = params.get("id") || "";
 
@@ -408,6 +416,46 @@ export function RecordDetailScreen() {
     }
     return null;
   }, [data.clients, data.invoices, data.projects, data.quotations, id, type]);
+
+  const clientActivity = useMemo(() => {
+    if (type !== "client") return null;
+    const client = data.clients.find((item) => item.id === id);
+    if (!client) return null;
+    const companyKey = client.companyName.trim().toLocaleLowerCase();
+    const inRange = (date: string, from: string, to: string) =>
+      (!from || date >= from) && (!to || date <= to);
+
+    return {
+      quotations: data.quotations
+        .filter(
+          (item) =>
+            item.companyName.trim().toLocaleLowerCase() === companyKey &&
+            inRange(item.issueDate || "", quotationFrom, quotationTo),
+        )
+        .sort((a, b) => String(b.issueDate || "").localeCompare(String(a.issueDate || ""))),
+      invoices: data.invoices
+        .filter(
+          (item) =>
+            item.companyName.trim().toLocaleLowerCase() === companyKey &&
+            inRange(item.invoiceDate || "", invoiceFrom, invoiceTo),
+        )
+        .sort((a, b) => String(b.invoiceDate || "").localeCompare(String(a.invoiceDate || ""))),
+    };
+  }, [data.clients, data.invoices, data.quotations, id, invoiceFrom, invoiceTo, quotationFrom, quotationTo, type]);
+
+  const invoiceQuotation = useMemo(() => {
+    if (type !== "invoice") return null;
+    const invoice = data.invoices.find((item) => item.id === id);
+    if (!invoice) return null;
+    return (
+      data.quotations.find(
+        (quotation) =>
+          quotation.linkedProjectId === invoice.linkedProjectId ||
+          quotation.serialNumber === invoice.quotationSerialNumber ||
+          quotation.id === invoice.quotationNo,
+      ) || null
+    );
+  }, [data.invoices, data.quotations, id, type]);
 
   async function printRecord() {
     if (!detail) return;
@@ -477,6 +525,15 @@ export function RecordDetailScreen() {
               <ArrowLeft size={14} />
               Back
             </Link>
+            {invoiceQuotation ? (
+              <Link
+                className="button"
+                href={`${routes.recordDetail}?type=quotation&id=${encodeURIComponent(invoiceQuotation.id)}`}
+              >
+                <FileText size={14} />
+                Open Quotation
+              </Link>
+            ) : null}
             <button className="button" type="button" onClick={() => void printRecord()}>
               {type === "invoice" || type === "quotation" ? (
                 <Download size={14} />
@@ -564,6 +621,75 @@ export function RecordDetailScreen() {
           </section>
         ) : null}
       </section>
+
+      {clientActivity ? (
+        <div className="client-related-records">
+          <section className="card client-related-section">
+            <header>
+              <div>
+                <span>Client quotations</span>
+                <h2>Quotations ({clientActivity.quotations.length})</h2>
+              </div>
+              <DateRangeFields
+                from={quotationFrom}
+                to={quotationTo}
+                onFromChange={setQuotationFrom}
+                onToChange={setQuotationTo}
+              />
+            </header>
+            <div className="table-wrap">
+              <table className="data-table plain-data-table client-activity-table">
+                <thead><tr><th>Date</th><th>Quotation</th><th>Store / Branch</th><th>Status</th><th>Amount</th><th>Open</th></tr></thead>
+                <tbody>
+                  {clientActivity.quotations.length ? clientActivity.quotations.map((quotation) => (
+                    <tr className="plain-data-row" key={quotation.id}>
+                      <td>{quotation.issueDate || "—"}</td>
+                      <td><strong>{quotation.id}</strong><br/><small>{quotation.serialNumber}</small></td>
+                      <td>{quotation.store || "—"}</td>
+                      <td><StatusBadge value={quotation.status} /></td>
+                      <td className="money-cell">{money(quotation.amount)}</td>
+                      <td><Link className="icon-button" href={`${routes.recordDetail}?type=quotation&id=${encodeURIComponent(quotation.id)}`} aria-label={`Open quotation ${quotation.id}`}><FileText size={16}/></Link></td>
+                    </tr>
+                  )) : <tr className="empty-row"><td colSpan={6}>No quotations in this date range.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className="card client-related-section">
+            <header>
+              <div>
+                <span>Client invoices</span>
+                <h2>Invoices ({clientActivity.invoices.length})</h2>
+              </div>
+              <DateRangeFields
+                from={invoiceFrom}
+                to={invoiceTo}
+                onFromChange={setInvoiceFrom}
+                onToChange={setInvoiceTo}
+              />
+            </header>
+            <div className="table-wrap">
+              <table className="data-table plain-data-table client-activity-table">
+                <thead><tr><th>Date</th><th>Invoice</th><th>Project</th><th>Status</th><th>Amount</th><th>Balance</th><th>Open</th></tr></thead>
+                <tbody>
+                  {clientActivity.invoices.length ? clientActivity.invoices.map((invoice) => (
+                    <tr className="plain-data-row" key={invoice.id}>
+                      <td>{invoice.invoiceDate || "—"}</td>
+                      <td><strong>{invoice.id}</strong></td>
+                      <td>{invoice.project || "—"}</td>
+                      <td><StatusBadge value={invoice.status} /></td>
+                      <td className="money-cell">{money(invoice.amount)}</td>
+                      <td className="money-cell">{money(invoice.amount - invoice.received)}</td>
+                      <td><Link className="icon-button" href={`${routes.recordDetail}?type=invoice&id=${encodeURIComponent(invoice.id)}`} aria-label={`Open invoice ${invoice.id}`}><ReceiptText size={16}/></Link></td>
+                    </tr>
+                  )) : <tr className="empty-row"><td colSpan={7}>No invoices in this date range.</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      ) : null}
     </>
   );
 }
