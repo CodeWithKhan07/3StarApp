@@ -1,6 +1,7 @@
 "use client";
 
-import { PageHeader } from "@/presentation/components/ui";
+import { matchesRecordQuery } from "@/application/services/record-query";
+import { DateRangeFields, PageHeader } from "@/presentation/components/ui";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
 import { RotateCcw, Search, Trash2, XCircle } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -31,30 +32,36 @@ export function TrashScreen() {
     emptyTrash,
   } = useBusinessData();
   const [query, setQuery] = useState("");
+  const [company, setCompany] = useState("all");
+  const [collection, setCollection] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [error, setError] = useState("");
+  const companies = useMemo(
+    () =>
+      [...new Set(trash.map((item) => item.companyName).filter(Boolean))].sort(
+        (a, b) => a.localeCompare(b),
+      ),
+    [trash],
+  );
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
     return [...trash]
       .sort(
         (a, b) =>
           new Date(b.deletedAt).valueOf() - new Date(a.deletedAt).valueOf(),
       )
-      .filter((item) =>
-        q
-          ? [
-              item.label,
-              item.companyName,
-              item.recordId,
-              item.collection,
-              item.deletedAt,
-            ]
-              .join(" ")
-              .toLowerCase()
-              .includes(q)
-          : true,
+      .filter(
+        (item) =>
+          (collection === "all" || item.collection === collection) &&
+          matchesRecordQuery(
+            [item.label, item.companyName, item.recordId, item.collection],
+            item.companyName,
+            item.deletedAt.slice(0, 10),
+            { query, company, dateFrom, dateTo },
+          ),
       );
-  }, [query, trash]);
+  }, [collection, company, dateFrom, dateTo, query, trash]);
 
   async function restore(id: string) {
     setError("");
@@ -124,6 +131,33 @@ export function TrashScreen() {
             placeholder="Search deleted item, company, type..."
           />
         </label>
+        <select
+          className="select"
+          value={company}
+          onChange={(event) => setCompany(event.target.value)}
+        >
+          <option value="all">All Companies</option>
+          {companies.map((name) => (
+            <option key={name} value={name}>{name}</option>
+          ))}
+        </select>
+        <select
+          className="select"
+          value={collection}
+          onChange={(event) => setCollection(event.target.value)}
+        >
+          <option value="all">All Record Types</option>
+          <option value="clients">Clients</option>
+          <option value="projects">Projects</option>
+          <option value="quotations">Quotations</option>
+          <option value="invoices">Invoices</option>
+        </select>
+        <DateRangeFields
+          from={dateFrom}
+          to={dateTo}
+          onFromChange={setDateFrom}
+          onToChange={setDateTo}
+        />
       </section>
       {error ? <div className="form-message form-message--error">{error}</div> : null}
       <section className="card trash-list-card">

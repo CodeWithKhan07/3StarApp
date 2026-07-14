@@ -1,10 +1,10 @@
 "use client";
 
+import { exportInvoicePdf } from "@/application/services/document-export";
 import {
   parseInvoiceDocument,
   type InvoiceImportDraft,
 } from "@/application/services/invoice-import";
-import { exportInvoicePdf } from "@/application/services/document-export";
 import type { Invoice, Quotation } from "@/domain/entities/business";
 import {
   downloadLocalInvoiceAttachment,
@@ -61,7 +61,10 @@ function createManualLineItems(
       const unitPrice = safeNumber(item.unitPrice, 0);
       const amount = safeNumber(item.amount, quantity * unitPrice);
       const appliedVatRate = safeNumber(item.vatRate, vatRate);
-      const unitCode = safeString(itemRecord.unitCode, safeString(itemRecord.unit, ""));
+      const unitCode = safeString(
+        itemRecord.unitCode,
+        safeString(itemRecord.unit, ""),
+      );
       const vatAmount = safeNumber(
         itemRecord.vatAmount,
         amount * (appliedVatRate / 100),
@@ -80,7 +83,10 @@ function createManualLineItems(
     });
   }
 
-  const subTotal = safeNumber(quotation.subTotal, safeNumber(quotation.amount, 0));
+  const subTotal = safeNumber(
+    quotation.subTotal,
+    safeNumber(quotation.amount, 0),
+  );
   const appliedVatRate = safeNumber(quotation.vatRate, vatRate);
   const vatAmount = safeNumber(
     quotation.vatAmount,
@@ -115,7 +121,10 @@ function createImportedLineItems(
         item.vatRate,
         safeNumber(draft.vatRate, fallbackVatRate),
       );
-      const unitCode = safeString(itemRecord.unitCode, safeString(itemRecord.unit, ""));
+      const unitCode = safeString(
+        itemRecord.unitCode,
+        safeString(itemRecord.unit, ""),
+      );
       const vatAmount = safeNumber(
         itemRecord.vatAmount,
         amount * (appliedVatRate / 100),
@@ -146,10 +155,7 @@ function createImportedLineItems(
       unitPrice: subTotal,
       amount: subTotal,
       vatRate: appliedVatRate,
-      vatAmount: safeNumber(
-        draft.vatAmount,
-        subTotal * (appliedVatRate / 100),
-      ),
+      vatAmount: safeNumber(draft.vatAmount, subTotal * (appliedVatRate / 100)),
     },
   ];
 }
@@ -162,12 +168,12 @@ export function QuotationInvoiceScreen() {
     (item) => item.serialNumber === serial || item.id === serial,
   );
 
-
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [mode, setMode] = useState<Mode>("manual");
   const [file, setFile] = useState<File | null>(null);
   const [draft, setDraft] = useState<InvoiceImportDraft | null>(null);
   const [lineItems, setLineItems] = useState<InvoiceLineItem[]>([]);
+  const [discountAmount, setDiscountAmount] = useState(0);
   const [reading, setReading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -193,9 +199,9 @@ export function QuotationInvoiceScreen() {
     return {
       subTotal,
       vatAmount,
-      amount: subTotal + vatAmount,
+      amount: subTotal + vatAmount - discountAmount,
     };
-  }, [activeLineItems]);
+  }, [activeLineItems, discountAmount]);
 
   if (!quotation) {
     return (
@@ -252,6 +258,7 @@ export function QuotationInvoiceScreen() {
       setDraft(parsed);
       setFile(selected);
       setLineItems(createImportedLineItems(parsed, data.company.vatRate));
+      setDiscountAmount(parsed.discountAmount || 0);
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "Invoice could not be read.",
@@ -292,24 +299,38 @@ export function QuotationInvoiceScreen() {
     try {
       if (mode === "upload" && file) {
         localAttachmentKey = `${quotationSerialNumber}:${invoiceId}`;
-        await saveLocalInvoiceAttachment(localAttachmentKey, file);
-        attachmentPath = `local:${localAttachmentKey}`;
+        try {
+          await saveLocalInvoiceAttachment(localAttachmentKey, file);
+          attachmentPath = `local:${localAttachmentKey}`;
+        } catch (attachmentError) {
+          console.warn(
+            "Attachment save failed:",
+            attachmentError instanceof Error
+              ? attachmentError.message
+              : "Unknown error",
+          );
+          setError(
+            "Warning: Invoice created but attachment could not be saved. " +
+              (attachmentError instanceof Error
+                ? attachmentError.message
+                : "Please try uploading again."),
+          );
+          attachmentPath = "";
+        }
       }
 
       const record: Invoice = {
         id: invoiceId,
         companyName: formValue(form, "companyName") || quotationCompanyName,
         project:
-          formValue(form, "project") ||
-          quotationStore ||
-          quotationScopeOfWork,
+          formValue(form, "project") || quotationStore || quotationScopeOfWork,
         quotationNo: quotationId,
         quotationSerialNumber: quotationSerialNumber,
         invoiceDate: formValue(form, "invoiceDate") || today(),
         dueDate: formValue(form, "dueDate"),
         paymentTerms: formValue(form, "paymentTerms") || "Due on Receipt",
         purchaseOrderNumber: formValue(form, "purchaseOrderNumber"),
-        amount: totals.amount - formNumber(form, "discountAmount"),
+        amount: totals.amount,
         received: formNumber(form, "received"),
         status: "pending",
         remarks: formValue(form, "remarks"),
@@ -344,7 +365,7 @@ export function QuotationInvoiceScreen() {
         subTotal: totals.subTotal,
         vatRate: finalLineItems[0]?.vatRate ?? data.company.vatRate,
         vatAmount: totals.vatAmount,
-        discountAmount: formNumber(form, "discountAmount"),
+        discountAmount,
         lineItems: finalLineItems,
         attachmentName: file?.name,
         attachmentType: file?.type,
@@ -504,6 +525,7 @@ export function QuotationInvoiceScreen() {
                   setDraft(null);
                   setFile(null);
                   setLineItems(manualLineItems);
+                  setDiscountAmount(0);
                 }}
               >
                 <FilePlus2 size={22} />
@@ -770,7 +792,10 @@ export function QuotationInvoiceScreen() {
                   type="number"
                   min="0"
                   step="0.01"
-                  defaultValue={draft?.discountAmount || 0}
+                  value={discountAmount}
+                  onChange={(event) =>
+                    setDiscountAmount(Number(event.target.value) || 0)
+                  }
                 />
               </label>
               <label className="field">

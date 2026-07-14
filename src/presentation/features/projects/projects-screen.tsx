@@ -1,8 +1,9 @@
 "use client";
 
 import type { BusinessDataSet } from "@/domain/entities/business";
+import { matchesRecordQuery } from "@/application/services/record-query";
 import { routes } from "@/lib/routes";
-import { PageHeader, StatusBadge } from "@/presentation/components/ui";
+import { DateRangeFields, PageHeader, StatusBadge } from "@/presentation/components/ui";
 import { money } from "@/presentation/data/sample-data";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
 import { collectCompanyNames, normalizeCompanyKey } from "@/presentation/utils/company-filters";
@@ -33,12 +34,6 @@ const categories = [
 ];
 
 const collator = new Intl.Collator("en", { numeric: true, sensitivity: "base" });
-const dateFormat = new Intl.DateTimeFormat("en-GB", {
-  day: "2-digit",
-  month: "short",
-  year: "numeric",
-});
-
 const record = (value: unknown) =>
   typeof value === "object" && value !== null
     ? (value as Record<string, unknown>)
@@ -89,16 +84,6 @@ function dateValue(item: NormalizedProject) {
   return Number.isNaN(value) ? 0 : value;
 }
 
-function dateKey(item: NormalizedProject) {
-  return item.startDate || "No date";
-}
-
-function formatDate(value: string) {
-  if (!value || value === "No date") return "No date";
-  const parsed = new Date(`${value}T00:00:00`);
-  return Number.isNaN(parsed.valueOf()) ? value : dateFormat.format(parsed);
-}
-
 export function ProjectsScreen() {
   const router = useRouter();
   const { data, syncState } = useBusinessData();
@@ -106,7 +91,8 @@ export function ProjectsScreen() {
   const [status, setStatus] = useState("all");
   const [category, setCategory] = useState("all");
   const [company, setCompany] = useState("all");
-  const [dateJump, setDateJump] = useState("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const projects = useMemo(
     () =>
@@ -120,12 +106,10 @@ export function ProjectsScreen() {
     [projects],
   );
   const companies = useMemo(() => collectCompanyNames(data), [data]);
-  const dateKeys = useMemo(() => Array.from(new Set(projects.map(dateKey))), [projects]);
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
     return projects.filter(
       (item) =>
-        (!q ||
+        matchesRecordQuery(
           [
             item.id,
             item.company,
@@ -136,16 +120,15 @@ export function ProjectsScreen() {
             item.quotationNo,
             item.woNo,
             item.remarks,
-          ]
-            .join(" ")
-            .toLowerCase()
-            .includes(q)) &&
+          ],
+          item.company,
+          item.startDate,
+          { query, company, dateFrom, dateTo },
+        ) &&
         (status === "all" || item.status === status) &&
-        (category === "all" || item.category === category) &&
-        (company === "all" || normalizeCompanyKey(item.company) === company) &&
-        (dateJump === "all" || dateKey(item) === dateJump),
+        (category === "all" || item.category === category),
     );
-  }, [category, company, dateJump, projects, query, status]);
+  }, [category, company, dateFrom, dateTo, projects, query, status]);
 
   return (
     <>
@@ -183,14 +166,12 @@ export function ProjectsScreen() {
             </option>
           ))}
         </select>
-        <select className="select" value={dateJump} onChange={(event) => setDateJump(event.target.value)}>
-          <option value="all">All Dates</option>
-          {dateKeys.map((item) => (
-            <option key={item} value={item}>
-              {formatDate(item)}
-            </option>
-          ))}
-        </select>
+        <DateRangeFields
+          from={dateFrom}
+          to={dateTo}
+          onFromChange={setDateFrom}
+          onToChange={setDateTo}
+        />
         <select className="select" value={status} onChange={(event) => setStatus(event.target.value)}>
           <option value="all">All Status</option>
           {statuses.map((item) => (

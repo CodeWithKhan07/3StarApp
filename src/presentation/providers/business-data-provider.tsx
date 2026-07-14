@@ -4,16 +4,22 @@ import {
   parseBusinessWorkbook,
   type ImportResult,
 } from "@/application/services/excel-import";
+import {
+  assertUniqueRecordId,
+  prepareRecordForSave,
+  recordIdsEqual,
+  type CollectionKey,
+  type EntityMap,
+} from "@/application/services/business-records";
 import workbook from "@/data/workbook-data.json";
 import type { BusinessDataSet, TrashItem } from "@/domain/entities/business";
 import { FirebaseBusinessDataRepository } from "@/infrastructure/firebase/business-data-repository";
 import { useAuth } from "@/presentation/providers/auth-provider";
 import {
   createNextInvoiceId,
+  createNextProjectId,
   createQuotationSerial,
   ensureQuotationSerial,
-  normalizeInvoiceId,
-  normalizeQuotationId,
 } from "@/lib/record-ids";
 import {
   createContext,
@@ -27,19 +33,6 @@ import {
 } from "react";
 
 type SyncState = "synced" | "syncing" | "offline" | "error";
-
-type CollectionKey = "clients" | "projects" | "quotations" | "invoices";
-
-type EntityMap = {
-  clients: BusinessDataSet["clients"][number];
-  projects: BusinessDataSet["projects"][number];
-  quotations: BusinessDataSet["quotations"][number];
-  invoices: BusinessDataSet["invoices"][number];
-};
-
-type EntityWithId = {
-  id: string;
-};
 
 interface BusinessDataContextValue {
   data: BusinessDataSet;
@@ -159,10 +152,14 @@ function preserveCompanyProfile(next: BusinessDataSet): BusinessDataSet {
     quotations: next.quotations.map((quotation) => ({
       ...quotation,
       serialNumber: ensureQuotationSerial(quotation.id, quotation.serialNumber),
+      // Legacy/imported rows may predate explicit financial metadata.
+      currency: quotation.currency || company.currency || fallback.currency,
+      vatRate: quotation.vatRate ?? company.vatRate ?? fallback.vatRate,
     })),
     invoices: next.invoices.map((invoice) => ({
       ...invoice,
       supplierEmail: normalizeCompanyEmail(invoice.supplierEmail),
+      currency: invoice.currency || company.currency || fallback.currency,
     })),
     company: {
       businessName: keep(company.businessName, fallback.businessName),
@@ -195,15 +192,6 @@ const localKey = "3star-business-data-v2";
 const pendingKey = "3star-pending-sync-v2";
 
 const isBrowser = () => typeof window !== "undefined";
-
-const isEntityWithId = (value: unknown): value is EntityWithId => {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "id" in value &&
-    typeof (value as EntityWithId).id === "string"
-  );
-};
 
 const today = () => new Date().toISOString().slice(0, 10);
 
@@ -238,10 +226,10 @@ function getRecordCompany(key: CollectionKey, record: EntityMap[CollectionKey]) 
 
 function buildProjectFromQuotation(
   quotation: EntityMap["quotations"],
-  existingProjectCount: number,
+  existingProjectIds: string[],
 ): EntityMap["projects"] {
   return {
-    id: `PROJ-${String(existingProjectCount + 1).padStart(5, "0")}`,
+    id: createNextProjectId(existingProjectIds),
     company: quotation.companyName,
     store: quotation.store ?? "",
     workDescription: quotation.scopeOfWork,
@@ -261,6 +249,9 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
   const repository = useMemo(() => new FirebaseBusinessDataRepository(), []);
 
   const [data, setData] = useState<BusinessDataSet>(initialData);
+  // The ref is updated synchronously before React rerenders so back-to-back
+  // CRUD operations always build on the newest committed snapshot.
+  const dataRef = useRef<BusinessDataSet>(initialData);
   const [loading, setLoading] = useState(true);
   const [syncState, setSyncState] = useState<SyncState>("synced");
   const [lastError, setLastError] = useState("");
@@ -271,6 +262,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
   const pendingPersistRevisionRef = useRef(0);
 
   const persistLocal = useCallback((next: BusinessDataSet) => {
+    dataRef.current = next;
     setData(next);
 
     if (!isBrowser()) return;
@@ -366,43 +358,56 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
     [persistLocal, sync],
   );
 
+  const commitMutation = useCallback(
+    (
+      source: string,
+      mutate: (current: BusinessDataSet) => BusinessDataSet,
+    ) => {
+      const next = preserveCompanyProfile(mutate(dataRef.current));
+      saveInstant(next, source);
+      return next;
+    },
+    [saveInstant],
+  );
+
   useEffect(() => {
     if (!data.trash?.length) return;
 
     const purgeExpired = () => {
       const now = Date.now();
-      const activeTrash = (data.trash || []).filter((item) => {
+      const currentTrash = dataRef.current.trash || [];
+      const activeTrash = currentTrash.filter((item) => {
         const expires = new Date(item.deleteAfter).valueOf();
         return Number.isNaN(expires) || expires > now;
       });
 
-      if (activeTrash.length === data.trash?.length) return;
+      if (activeTrash.length === currentTrash.length) return;
 
-      saveInstant(
-        {
-          ...data,
-          trash: activeTrash,
-        },
-        "trash-auto-cleanup",
-      );
+      commitMutation("trash-auto-cleanup", (current) => ({
+        ...current,
+        trash: activeTrash,
+      }));
     };
 
     purgeExpired();
     const timer = window.setInterval(purgeExpired, 60 * 60 * 1000);
 
     return () => window.clearInterval(timer);
-  }, [data, saveInstant]);
+  }, [commitMutation, data.trash]);
 
   useEffect(() => {
     if (!user) {
-      setLoading(false);
+      // Schedule the state transition outside the effect's synchronous phase.
+      queueMicrotask(() => setLoading(false));
       return;
     }
 
     let active = true;
     const loadMutationRevision = mutationRevisionRef.current;
 
-    setLoading(true);
+    queueMicrotask(() => {
+      if (active) setLoading(true);
+    });
 
     if (isBrowser()) {
       const local = window.localStorage.getItem(localKey);
@@ -412,7 +417,10 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
           const parsed = preserveCompanyProfile(
             JSON.parse(local) as BusinessDataSet,
           );
-          setData(parsed);
+          dataRef.current = parsed;
+          queueMicrotask(() => {
+            if (active) setData(parsed);
+          });
         } catch {
           window.localStorage.removeItem(localKey);
         }
@@ -429,6 +437,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
 
         if (cloud) {
           const restored = preserveCompanyProfile(cloud);
+          dataRef.current = restored;
           setData(restored);
 
           if (isBrowser()) {
@@ -437,6 +446,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
         } else {
           // A missing Firebase dataset is an intentional empty state. Do not
           // republish a cached snapshot and recreate manually deleted data.
+          dataRef.current = initialData;
           setData(initialData);
           setSyncState("synced");
           setLastError("");
@@ -493,99 +503,89 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
 
   const importFile = useCallback(
     async (file: File) => {
-      const parsed = await parseBusinessWorkbook(file, data);
+      const parsed = await parseBusinessWorkbook(file, dataRef.current);
 
-      const projects = parsed.projects.length ? parsed.projects : data.projects;
-      const quotations = parsed.quotations.length
-        ? parsed.quotations
-        : data.quotations;
+      // Import applies to the latest snapshot so edits made while a large file
+      // is being parsed are not overwritten by the older render snapshot.
+      commitMutation(file.name, (current) => {
+        const projects = parsed.projects.length
+          ? parsed.projects
+          : current.projects;
+        const quotations = parsed.quotations.length
+          ? parsed.quotations
+          : current.quotations;
+        const linkedProjects = [...projects];
+        const linkedQuotations = quotations.map((quotation) => {
+          const serialized = prepareRecordForSave("quotations", {
+            ...quotation,
+            serialNumber: ensureQuotationSerial(
+              quotation.id,
+              quotation.serialNumber,
+            ),
+          });
+          if (serialized.linkedProjectId) return serialized;
 
-      const linkedProjects = [...projects];
-      const linkedQuotations = quotations.map((quotation) => {
-        const serialized = {
-          ...quotation,
-          serialNumber: ensureQuotationSerial(
-            quotation.id,
-            quotation.serialNumber,
-          ),
+          const hasProject = linkedProjects.some(
+            (project) => project.quotationNo === serialized.id,
+          );
+          if (hasProject) return serialized;
+
+          const project = buildProjectFromQuotation(
+            serialized,
+            linkedProjects.map((item) => item.id),
+          );
+          linkedProjects.unshift(project);
+          return { ...serialized, linkedProjectId: project.id };
+        });
+
+        return {
+          company: parsed.company,
+          clients: parsed.clients.length ? parsed.clients : current.clients,
+          projects: linkedProjects,
+          quotations: linkedQuotations,
+          invoices: parsed.invoices.length ? parsed.invoices : current.invoices,
+          trash: current.trash || [],
         };
-        if (serialized.linkedProjectId) return serialized;
-
-        const hasProject = linkedProjects.some(
-          (project) => project.quotationNo === serialized.id,
-        );
-        if (hasProject) return serialized;
-
-        const project = buildProjectFromQuotation(
-          serialized,
-          linkedProjects.length,
-        );
-        linkedProjects.unshift(project);
-
-        return { ...serialized, linkedProjectId: project.id };
       });
-
-      const next: BusinessDataSet = {
-        company: parsed.company,
-        clients: parsed.clients.length ? parsed.clients : data.clients,
-        projects: linkedProjects,
-        quotations: linkedQuotations,
-        invoices: parsed.invoices.length ? parsed.invoices : data.invoices,
-      };
-
-      saveInstant(next, file.name);
 
       return parsed;
     },
-    [data, saveInstant],
+    [commitMutation],
   );
 
   const createRecord = useCallback(
     async <TKey extends CollectionKey>(key: TKey, record: EntityMap[TKey]) => {
-      if (key === "invoices" && isEntityWithId(record)) {
-        const requestedId = normalizeInvoiceId(record.id || "");
-        const existingIds = data.invoices.map((item) =>
-          normalizeInvoiceId(item.id),
-        );
-
-        if (!requestedId) {
-          throw new Error("Invoice number is required.");
-        }
-
-        if (existingIds.includes(requestedId)) {
-          throw new Error(`Invoice number ${requestedId} is already used.`);
-        }
-
-        record = { ...record, id: requestedId } as EntityMap[TKey];
-      }
-
-      const next: BusinessDataSet = {
-        ...data,
-        [key]: [record, ...data[key]],
-      };
-
-      saveInstant(next, `${key}-create`);
+      const prepared = prepareRecordForSave(key, record);
+      commitMutation(`${key}-create`, (current) => {
+        assertUniqueRecordId(current, key, prepared.id);
+        return {
+          ...current,
+          [key]: [prepared, ...current[key]],
+        } as BusinessDataSet;
+      });
     },
-    [data, saveInstant],
+    [commitMutation],
   );
 
   const updateRecord = useCallback(
     async <TKey extends CollectionKey>(key: TKey, record: EntityMap[TKey]) => {
-      if (!isEntityWithId(record)) {
-        throw new Error("Record must contain a valid id.");
-      }
+      const prepared = prepareRecordForSave(key, record);
+      commitMutation(`${key}-update`, (current) => {
+        const exists = current[key].some((item) =>
+          recordIdsEqual(key, item.id, prepared.id),
+        );
+        if (!exists) throw new Error("Record not found.");
+        assertUniqueRecordId(current, key, prepared.id, prepared.id);
 
-      const next: BusinessDataSet = {
-        ...data,
-        [key]: data[key].map((item) => {
-          if (!isEntityWithId(item)) return item;
-          return item.id === record.id ? record : item;
-        }),
-      };
-
-      saveInstant(next, `${key}-update`);
+        return {
+          ...current,
+          [key]: current[key].map((item) =>
+            recordIdsEqual(key, item.id, prepared.id) ? prepared : item,
+          ),
+        } as BusinessDataSet;
+      });
     },
-    [data, saveInstant],
+    [commitMutation],
   );
 
   const patchRecord = useCallback(
@@ -597,18 +597,30 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       if (!id.trim()) {
         throw new Error("Record id is required.");
       }
+      if ("id" in patch && patch.id && !recordIdsEqual(key, id, String(patch.id))) {
+        throw new Error("Record IDs cannot be changed by a patch operation.");
+      }
 
-      const next: BusinessDataSet = {
-        ...data,
-        [key]: data[key].map((item) => {
-          if (!isEntityWithId(item)) return item;
-          return item.id === id ? { ...item, ...patch } : item;
-        }),
-      };
+      commitMutation(`${key}-patch`, (current) => {
+        const existing = current[key].find((item) =>
+          recordIdsEqual(key, item.id, id),
+        );
+        if (!existing) throw new Error("Record not found.");
+        const prepared = prepareRecordForSave(key, {
+          ...existing,
+          ...patch,
+          id: existing.id,
+        } as EntityMap[TKey]);
 
-      saveInstant(next, `${key}-patch`);
+        return {
+          ...current,
+          [key]: current[key].map((item) =>
+            recordIdsEqual(key, item.id, id) ? prepared : item,
+          ),
+        } as BusinessDataSet;
+      });
     },
-    [data, saveInstant],
+    [commitMutation],
   );
 
   const deleteRecord = useCallback(
@@ -616,110 +628,92 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       if (!id.trim()) {
         throw new Error("Record id is required.");
       }
+      commitMutation(`${key}-delete`, (current) => {
+        const record = current[key].find((item) =>
+          recordIdsEqual(key, item.id, id),
+        );
+        if (!record) throw new Error("Record not found.");
 
-      const record = data[key].find((item) => {
-        if (!isEntityWithId(item)) return false;
-        return item.id === id;
+        const deletedAt = new Date();
+        const trashItem = {
+          id: crypto.randomUUID(),
+          collection: key,
+          recordId: record.id,
+          label: getRecordLabel(key, record),
+          companyName: getRecordCompany(key, record),
+          deletedAt: deletedAt.toISOString(),
+          deleteAfter: addDaysIso(deletedAt, trashRetentionDays),
+          record,
+        } as TrashItem;
+
+        return {
+          ...current,
+          [key]: current[key].filter(
+            (item) => !recordIdsEqual(key, item.id, id),
+          ),
+          trash: [trashItem, ...(current.trash || [])],
+        } as BusinessDataSet;
       });
-
-      if (!record) {
-        throw new Error("Record not found.");
-      }
-
-      const deletedAt = new Date();
-      const trashItem: TrashItem = {
-        id: crypto.randomUUID(),
-        collection: key,
-        recordId: id,
-        label: getRecordLabel(key, record),
-        companyName: getRecordCompany(key, record),
-        deletedAt: deletedAt.toISOString(),
-        deleteAfter: addDaysIso(deletedAt, trashRetentionDays),
-        record,
-      };
-
-      const next: BusinessDataSet = {
-        ...data,
-        [key]: data[key].filter((item) => {
-          if (!isEntityWithId(item)) return true;
-          return item.id !== id;
-        }),
-        trash: [trashItem, ...(data.trash || [])],
-      };
-
-      saveInstant(next, `${key}-delete`);
-
     },
-    [data, saveInstant],
+    [commitMutation],
   );
 
   const restoreTrashItem = useCallback(
     async (trashId: string) => {
-      const trash = data.trash || [];
-      const item = trash.find((entry) => entry.id === trashId);
+      commitMutation("trash-restore", (current) => {
+        const trash = current.trash || [];
+        const item = trash.find((entry) => entry.id === trashId);
+        if (!item) throw new Error("Trash item not found.");
 
-      if (!item) {
-        throw new Error("Trash item not found.");
-      }
-
-      if (
-        data[item.collection].some((record) => {
-          if (!isEntityWithId(record)) return false;
-          return record.id === item.recordId;
-        })
-      ) {
-        throw new Error(
-          `Cannot restore ${item.label} because another ${item.collection.slice(0, -1)} has the same id.`,
+        const prepared = prepareRecordForSave(
+          item.collection,
+          item.record as EntityMap[typeof item.collection],
         );
-      }
+        assertUniqueRecordId(current, item.collection, prepared.id);
 
-      const next: BusinessDataSet = {
-        ...data,
-        [item.collection]: [item.record, ...data[item.collection]],
-        trash: trash.filter((entry) => entry.id !== trashId),
-      };
-
-      saveInstant(next, `${item.collection}-restore`);
+        return {
+          ...current,
+          [item.collection]: [prepared, ...current[item.collection]],
+          trash: trash.filter((entry) => entry.id !== trashId),
+        } as BusinessDataSet;
+      });
     },
-    [data, saveInstant],
+    [commitMutation],
   );
 
   const permanentlyDeleteTrashItem = useCallback(
     async (trashId: string) => {
-      const trash = data.trash || [];
-      const item = trash.find((entry) => entry.id === trashId);
-      const next: BusinessDataSet = {
-        ...data,
-        trash: trash.filter((entry) => entry.id !== trashId),
-      };
+      let removed: TrashItem | undefined;
+      commitMutation("trash-delete", (current) => {
+        const trash = current.trash || [];
+        removed = trash.find((entry) => entry.id === trashId);
+        if (!removed) throw new Error("Trash item not found.");
+        return {
+          ...current,
+          trash: trash.filter((entry) => entry.id !== trashId),
+        };
+      });
 
-      saveInstant(next, "trash-delete");
-
-      if (item?.collection === "quotations" && user) {
-        await repository.releaseQuotationId(user.uid, item.recordId);
+      if (removed?.collection === "quotations" && user) {
+        await repository.releaseQuotationId(user.uid, removed.recordId);
       }
     },
-    [data, repository, saveInstant, user],
+    [commitMutation, repository, user],
   );
 
   const emptyTrash = useCallback(async () => {
-    const quotationIds = (data.trash || [])
+    const quotationIds = (dataRef.current.trash || [])
       .filter((item) => item.collection === "quotations")
       .map((item) => item.recordId);
 
-    const next: BusinessDataSet = {
-      ...data,
-      trash: [],
-    };
-
-    saveInstant(next, "trash-empty");
+    commitMutation("trash-empty", (current) => ({ ...current, trash: [] }));
 
     if (user) {
       await Promise.all(
         quotationIds.map((id) => repository.releaseQuotationId(user.uid, id)),
       );
     }
-  }, [data, repository, saveInstant, user]);
+  }, [commitMutation, repository, user]);
 
   const createProject = useCallback(
     async (project: EntityMap["projects"]) => {
@@ -737,117 +731,106 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
 
   const createQuotation = useCallback(
     async (quotation: EntityMap["quotations"]) => {
-      const existingIds = data.quotations.map((item) => item.id);
-      const requestedId = normalizeQuotationId(quotation.id || "");
-      const normalizedExisting = new Set(
-        existingIds.map((id) => normalizeQuotationId(id)),
-      );
-
-      if (!requestedId) {
-        throw new Error("Quotation number is required.");
-      }
-
-      if (normalizedExisting.has(requestedId)) {
-        throw new Error(`Quotation number ${requestedId} is already used.`);
-      }
+      const prepared = prepareRecordForSave("quotations", {
+        ...quotation,
+        serialNumber: quotation.serialNumber || createQuotationSerial(),
+      });
+      const existingIds = dataRef.current.quotations.map((item) => item.id);
+      assertUniqueRecordId(dataRef.current, "quotations", prepared.id);
 
       if (user) {
         try {
-          await repository.reserveQuotationId(user.uid, requestedId);
+          await repository.reserveQuotationId(user.uid, prepared.id);
         } catch {
           await repository.pruneStaleQuotationReservations(
             user.uid,
             existingIds,
           );
-          await repository.reserveQuotationId(user.uid, requestedId);
+          await repository.reserveQuotationId(user.uid, prepared.id);
         }
       }
 
-      const serialized = {
-        ...quotation,
-        id: requestedId,
-        serialNumber: quotation.serialNumber || createQuotationSerial(),
-      };
-      const project = buildProjectFromQuotation(
-        serialized,
-        data.projects.length,
-      );
-      const linkedQuotation: EntityMap["quotations"] = {
-        ...serialized,
-        linkedProjectId: project.id,
-      };
-      const normalizedClientName = quotation.companyName.trim().toLowerCase();
-      const shouldCreateClient =
-        Boolean(normalizedClientName) &&
-        !data.clients.some(
-          (client) => client.companyName.trim().toLowerCase() === normalizedClientName,
-        );
-      const autoClient: EntityMap["clients"] | null = shouldCreateClient
-        ? {
-            id: crypto.randomUUID(),
-            companyName: quotation.companyName.trim(),
-            brandName: "",
-            contactPerson: "",
-            mobile: "",
-            email: "",
-            address: quotation.customerAddress || "",
-            city: quotation.customerCity || "",
-            country: quotation.customerCountry || "",
-            vatNumber: quotation.customerVatNumber || "",
-            crNumber: quotation.customerCrNumber || "",
-            storeName: quotation.store || "",
-            storeLocation: quotation.storeLocation || "",
-            contractStatus: "active",
-          }
-        : null;
+      try {
+        commitMutation("quotations-create", (current) => {
+          assertUniqueRecordId(current, "quotations", prepared.id);
+          const project = prepareRecordForSave(
+            "projects",
+            buildProjectFromQuotation(
+              prepared,
+              current.projects.map((item) => item.id),
+            ),
+          );
+          assertUniqueRecordId(current, "projects", project.id);
+          const linkedQuotation: EntityMap["quotations"] = {
+            ...prepared,
+            linkedProjectId: project.id,
+          };
+          const normalizedClientName = prepared.companyName.toLocaleLowerCase();
+          const shouldCreateClient = !current.clients.some(
+            (client) =>
+              client.companyName.trim().toLocaleLowerCase() ===
+              normalizedClientName,
+          );
+          const autoClient = shouldCreateClient
+            ? prepareRecordForSave("clients", {
+                id: crypto.randomUUID(),
+                companyName: prepared.companyName,
+                brandName: "",
+                contactPerson: "",
+                mobile: "",
+                email: "",
+                address: prepared.customerAddress || "",
+                city: prepared.customerCity || "",
+                country: prepared.customerCountry || "",
+                vatNumber: prepared.customerVatNumber || "",
+                crNumber: prepared.customerCrNumber || "",
+                storeName: prepared.store || "",
+                storeLocation: prepared.storeLocation || "",
+                contractStatus: "active",
+              })
+            : null;
 
-      const next: BusinessDataSet = {
-        ...data,
-        clients: autoClient ? [autoClient, ...data.clients] : data.clients,
-        quotations: [linkedQuotation, ...data.quotations],
-        projects: [project, ...data.projects],
-      };
-
-      saveInstant(next, "quotations-create");
+          return {
+            ...current,
+            clients: autoClient ? [autoClient, ...current.clients] : current.clients,
+            quotations: [linkedQuotation, ...current.quotations],
+            projects: [project, ...current.projects],
+          };
+        });
+      } catch (error) {
+        if (user) {
+          await repository.releaseQuotationId(user.uid, prepared.id).catch(() => undefined);
+        }
+        throw error;
+      }
     },
-    [data, repository, saveInstant, user],
+    [commitMutation, repository, user],
   );
 
   const createInvoiceFromQuotation = useCallback(
     async (quotationId: string, draft: Partial<EntityMap["invoices"]>) => {
-      const quotation = data.quotations.find((item) => item.id === quotationId);
-
-      if (!quotation) {
-        throw new Error("Quotation not found.");
-      }
-      if (
-        data.invoices.some(
-          (invoice) =>
-            invoice.quotationSerialNumber === quotation.serialNumber ||
-            (!invoice.quotationSerialNumber &&
-              invoice.quotationNo === quotation.id),
-        )
-      ) {
-        throw new Error(
-          "This quotation already has an invoice. Open its invoice page to view or edit it.",
+      commitMutation("invoices-create-from-quotation", (current) => {
+        const quotation = current.quotations.find((item) =>
+          recordIdsEqual("quotations", item.id, quotationId),
         );
-      }
+        if (!quotation) throw new Error("Quotation not found.");
+        if (
+          current.invoices.some(
+            (invoice) =>
+              invoice.quotationSerialNumber === quotation.serialNumber ||
+              (!invoice.quotationSerialNumber &&
+                invoice.quotationNo === quotation.id),
+          )
+        ) {
+          throw new Error(
+            "This quotation already has an invoice. Open its invoice page to view or edit it.",
+          );
+        }
 
-      const invoiceId = normalizeInvoiceId(
-        draft.id?.trim() ||
-          createNextInvoiceId(data.invoices.map((item) => item.id)),
-      );
-
-      if (
-        data.invoices.some(
-          (invoice) => normalizeInvoiceId(invoice.id) === invoiceId,
-        )
-      ) {
-        throw new Error(`Invoice number ${invoiceId} is already used.`);
-      }
-
-      const invoice: EntityMap["invoices"] = {
-        id: invoiceId,
+        const invoice: EntityMap["invoices"] = {
+        id:
+          draft.id?.trim() ||
+          createNextInvoiceId(current.invoices.map((item) => item.id)),
         companyName: quotation.companyName,
         project: quotation.store || quotation.companyName,
         quotationNo: quotation.id,
@@ -856,15 +839,15 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
         amount: draft.amount ?? quotation.amount,
         customerAddress: quotation.customerAddress || "",
         customerVatNumber: quotation.customerVatNumber || "",
-        supplierName: data.company.businessName,
-        supplierLegalName: data.company.legalCompanyName,
-        supplierAddress: `${data.company.city}, ${data.company.country}`,
-        supplierCrNumber: data.company.crNumber,
-        supplierVatNumber: data.company.vatNumber,
-        supplierEmail: normalizeCompanyEmail(data.company.email),
-        currency: quotation.currency || data.company.currency,
+        supplierName: current.company.businessName,
+        supplierLegalName: current.company.legalCompanyName,
+        supplierAddress: `${current.company.city}, ${current.company.country}`,
+        supplierCrNumber: current.company.crNumber,
+        supplierVatNumber: current.company.vatNumber,
+        supplierEmail: normalizeCompanyEmail(current.company.email),
+        currency: quotation.currency || current.company.currency,
         subTotal: quotation.subTotal,
-        vatRate: quotation.vatRate ?? data.company.vatRate,
+        vatRate: quotation.vatRate ?? current.company.vatRate,
         vatAmount: quotation.vatAmount,
         lineItems: quotation.lineItems?.map((item, index) => ({
           id: String(index + 1),
@@ -880,63 +863,58 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
         paymentMode: draft.paymentMode || "",
         status: "pending",
         remarks: draft.remarks || "",
-      };
-
-      const next: BusinessDataSet = {
-        ...data,
-        invoices: [invoice, ...data.invoices],
-      };
-
-      saveInstant(next, "invoices-create-from-quotation");
+        };
+        const prepared = prepareRecordForSave("invoices", invoice);
+        assertUniqueRecordId(current, "invoices", prepared.id);
+        return { ...current, invoices: [prepared, ...current.invoices] };
+      });
     },
-    [data, saveInstant],
+    [commitMutation],
   );
 
   const completeInvoicePayment = useCallback(
     async (id: string) => {
-      const invoice = data.invoices.find((item) => item.id === id);
+      commitMutation("invoices-complete-payment", (current) => {
+        const invoice = current.invoices.find((item) =>
+          recordIdsEqual("invoices", item.id, id),
+        );
+        if (!invoice) throw new Error("Invoice not found.");
 
-      if (!invoice) {
-        throw new Error("Invoice not found.");
-      }
+        const paymentDate = today();
+        const updatedInvoice = prepareRecordForSave("invoices", {
+          ...invoice,
+          received: invoice.amount,
+          status: "paid",
+          paymentDate,
+        });
+        const linkedProject = current.projects.find((project) => {
+          if (invoice.quotationNo) {
+            return project.quotationNo === invoice.quotationNo;
+          }
+          return project.company === invoice.companyName;
+        });
 
-      const paymentDate = today();
-
-      const updatedInvoice: EntityMap["invoices"] = {
-        ...invoice,
-        received: invoice.amount,
-        status: "paid",
-        paymentDate,
-      };
-
-      const linkedProject = data.projects.find((project) => {
-        if (invoice.quotationNo)
-          return project.quotationNo === invoice.quotationNo;
-        return project.company === invoice.companyName;
+        return {
+          ...current,
+          invoices: current.invoices.map((item) =>
+            recordIdsEqual("invoices", item.id, id) ? updatedInvoice : item,
+          ),
+          projects: linkedProject
+            ? current.projects.map((project) =>
+                project.id === linkedProject.id
+                  ? prepareRecordForSave("projects", {
+                      ...project,
+                      status: "completed",
+                      completion: 100,
+                      actualCompletion: paymentDate,
+                    })
+                  : project,
+              )
+            : current.projects,
+        };
       });
-
-      const next: BusinessDataSet = {
-        ...data,
-        invoices: data.invoices.map((item) =>
-          item.id === id ? updatedInvoice : item,
-        ),
-        projects: linkedProject
-          ? data.projects.map((project) =>
-              project.id === linkedProject.id
-                ? {
-                    ...project,
-                    status: "completed",
-                    completion: 100,
-                    actualCompletion: paymentDate,
-                  }
-                : project,
-            )
-          : data.projects,
-      };
-
-      saveInstant(next, "invoices-complete-payment");
     },
-    [data, saveInstant],
+    [commitMutation],
   );
 
   const updateProjectStatus = useCallback(
@@ -989,8 +967,8 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
   );
 
   const forceSync = useCallback(async () => {
-    await sync(data, "manual-force-sync");
-  }, [data, sync]);
+    await sync(dataRef.current, "manual-force-sync");
+  }, [sync]);
 
   const value = useMemo<BusinessDataContextValue>(
     () => ({

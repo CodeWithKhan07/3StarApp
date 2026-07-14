@@ -25,3 +25,40 @@ export function LoadingState() {
 export function EmptyTableRow({ columns, message = "No records are available yet." }: { columns: number; message?: string }) {
   return <tr><td colSpan={columns} style={{ padding: 32, textAlign: "center", color: "var(--muted)" }}>{message}</td></tr>;
 }
+
+// Reusable inclusive date controls keep list screens visually and
+// behaviorally consistent while the filtering logic stays outside the UI.
+export function DateRangeFields({
+  from,
+  to,
+  onFromChange,
+  onToChange,
+}: {
+  from: string;
+  to: string;
+  onFromChange: (value: string) => void;
+  onToChange: (value: string) => void;
+}) {
+  return (
+    <>
+      <label className="compact-filter-field">
+        <span>From date</span>
+        <input
+          type="date"
+          value={from}
+          max={to || undefined}
+          onChange={(event) => onFromChange(event.target.value)}
+        />
+      </label>
+      <label className="compact-filter-field">
+        <span>To date</span>
+        <input
+          type="date"
+          value={to}
+          min={from || undefined}
+          onChange={(event) => onToChange(event.target.value)}
+        />
+      </label>
+    </>
+  );
+}

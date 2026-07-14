@@ -2,34 +2,37 @@
 
 import { exportQuotationPdf } from "@/application/services/document-export";
 import {
-  parseQuotationDocument,
-  type QuotationImportDraft,
+    parseQuotationDocument,
+    type QuotationImportDraft,
 } from "@/application/services/quotation-import";
 import type { BusinessDataSet } from "@/domain/entities/business";
 import {
-  createNextQuotationId,
-  createQuotationSerial,
-  ensureQuotationSerial,
+    createNextQuotationId,
+    createQuotationSerial,
+    ensureQuotationSerial,
 } from "@/lib/record-ids";
 import { routes } from "@/lib/routes";
 import {
-  EmptyTableRow,
-  PageHeader,
-  StatusBadge,
+    EmptyTableRow,
+    PageHeader,
+    StatusBadge,
 } from "@/presentation/components/ui";
 import { money } from "@/presentation/data/sample-data";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
-import { collectCompanyNames, normalizeCompanyKey } from "@/presentation/utils/company-filters";
 import {
-  Check,
-  Download,
-  Edit3,
-  FileUp,
-  LoaderCircle,
-  Plus,
-  Search,
-  Trash2,
-  X,
+    collectCompanyNames,
+    normalizeCompanyKey,
+} from "@/presentation/utils/company-filters";
+import {
+    Check,
+    Download,
+    Edit3,
+    FileUp,
+    LoaderCircle,
+    Plus,
+    Search,
+    Trash2,
+    X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -95,9 +98,7 @@ function moneyOrEmpty(value: number) {
   return value > 0 ? money(value) : "";
 }
 
-function emptyLineItem(
-  serialNo: number
-): QuotationLineItemDraft {
+function emptyLineItem(serialNo: number): QuotationLineItemDraft {
   return {
     serialNo,
     description: "",
@@ -113,7 +114,7 @@ function emptyLineItem(
 function lineItemToDraft(
   item: Partial<QuotationLineItem>,
   serialNo: number,
-  fallbackVatRate = 0
+  fallbackVatRate = 0,
 ): QuotationLineItemDraft {
   const quantity = numberToInputText(item.quantity);
   const unitPrice = numberToInputText(item.unitPrice);
@@ -144,7 +145,7 @@ function asRecord(value: unknown): Record<string, unknown> {
 function readFirstString(
   record: Record<string, unknown>,
   keys: string[],
-  fallback = ""
+  fallback = "",
 ) {
   for (const key of keys) {
     const value = record[key];
@@ -160,7 +161,7 @@ function readFirstString(
 function readFirstNumber(
   record: Record<string, unknown>,
   keys: string[],
-  fallback = 0
+  fallback = 0,
 ) {
   for (const key of keys) {
     const value = record[key];
@@ -186,20 +187,16 @@ function normalizeQuotation(quotation: Quotation) {
     id: readFirstString(record, ["id"], crypto.randomUUID()),
     serialNumber: ensureQuotationSerial(
       readFirstString(record, ["id"], ""),
-      readFirstString(record, ["serialNumber"], "")
+      readFirstString(record, ["serialNumber"], ""),
     ),
     issueDate: readFirstString(record, ["issueDate"], ""),
     companyName: readFirstString(
       record,
       ["companyName", "company"],
-      "Unnamed Company"
+      "Unnamed Company",
     ),
     store: readFirstString(record, ["store", "branch", "storeBranch"], ""),
-    scopeOfWork: readFirstString(
-      record,
-      ["scopeOfWork", "description"],
-      ""
-    ),
+    scopeOfWork: readFirstString(record, ["scopeOfWork", "description"], ""),
     amount: readFirstNumber(record, ["amount"], 0),
     status: readFirstString(record, ["status"], "draft") as QuotationStatus,
     followUpDate: readFirstString(record, ["followUpDate"], ""),
@@ -207,8 +204,24 @@ function normalizeQuotation(quotation: Quotation) {
   };
 }
 
-function createPatchedQuotation(quotation: Quotation, patch: Partial<ReturnType<typeof normalizeQuotation>>): Quotation {
-  return { ...quotation, issueDate: patch.issueDate ?? quotation.issueDate, validityDate: "", companyName: patch.companyName ?? quotation.companyName, store: patch.store ?? quotation.store, scopeOfWork: patch.scopeOfWork ?? quotation.scopeOfWork, amount: patch.amount ?? quotation.amount, status: patch.status ?? quotation.status, followUpDate: "", remarks: patch.remarks ?? quotation.remarks };
+function createPatchedQuotation(
+  quotation: Quotation,
+  patch: Partial<ReturnType<typeof normalizeQuotation>>,
+): Quotation {
+  return {
+    ...quotation,
+    issueDate: patch.issueDate ?? quotation.issueDate,
+    // Inline edits only change visible fields; hidden document metadata must
+    // survive the save unchanged.
+    validityDate: quotation.validityDate,
+    companyName: patch.companyName ?? quotation.companyName,
+    store: patch.store ?? quotation.store,
+    scopeOfWork: patch.scopeOfWork ?? quotation.scopeOfWork,
+    amount: patch.amount ?? quotation.amount,
+    status: patch.status ?? quotation.status,
+    followUpDate: quotation.followUpDate,
+    remarks: patch.remarks ?? quotation.remarks,
+  };
 }
 
 export function QuotationsScreen() {
@@ -235,23 +248,28 @@ export function QuotationsScreen() {
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [importing, setImporting] = useState(false);
-  const [importDraft, setImportDraft] = useState<QuotationImportDraft | null>(null);
+  const [importDraft, setImportDraft] = useState<QuotationImportDraft | null>(
+    null,
+  );
   const [clientSource, setClientSource] = useState<"new" | "saved">("new");
   const [selectedClientId, setSelectedClientId] = useState("");
   const [quotationCompanyName, setQuotationCompanyName] = useState("");
   const [quotationStore, setQuotationStore] = useState("");
   const [quotationCustomerAddress, setQuotationCustomerAddress] = useState("");
-  const [quotationCustomerVatNumber, setQuotationCustomerVatNumber] = useState("");
+  const [quotationCustomerVatNumber, setQuotationCustomerVatNumber] =
+    useState("");
   const [showSqm, setShowSqm] = useState(false);
   const [vatRate, setVatRate] = useState(
-    numberToInputText(data.company.vatRate) || "15"
+    numberToInputText(data.company.vatRate) || "15",
   );
   const [lineItems, setLineItems] = useState<QuotationLineItemDraft[]>([
     emptyLineItem(1),
   ]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [editingId, setEditingId] = useState("");
-  const [draft, setDraft] = useState<ReturnType<typeof normalizeQuotation> | null>(null);
+  const [draft, setDraft] = useState<ReturnType<
+    typeof normalizeQuotation
+  > | null>(null);
 
   const quotationTotals = useMemo(() => {
     const subTotal = lineItems.reduce((sum, item) => sum + item.amount, 0);
@@ -259,7 +277,10 @@ export function QuotationsScreen() {
     return { subTotal, vatAmount, total: subTotal + vatAmount };
   }, [lineItems, vatRate]);
 
-  function updateLineItem(index: number, patch: Partial<QuotationLineItemDraft>) {
+  function updateLineItem(
+    index: number,
+    patch: Partial<QuotationLineItemDraft>,
+  ) {
     setLineItems((current) =>
       current.map((item, itemIndex) => {
         if (itemIndex !== index) return item;
@@ -272,7 +293,7 @@ export function QuotationsScreen() {
         next.vatAmount = 0;
 
         return next;
-      })
+      }),
     );
   }
 
@@ -281,22 +302,40 @@ export function QuotationsScreen() {
   }, [data.quotations]);
 
   const nextQuotationId = useMemo(() => {
-    return createNextQuotationId(data.quotations.map((quotation) => quotation.id));
+    return createNextQuotationId(
+      data.quotations.map((quotation) => quotation.id),
+    );
   }, [data.quotations]);
 
   const clientOptions = useMemo(() => {
     return data.clients
       .map((client) => {
         const record = asRecord(client);
-        const companyName = readFirstString(record, ["companyName", "company", "name"], "");
+        const companyName = readFirstString(
+          record,
+          ["companyName", "company", "name"],
+          "",
+        );
         return {
           id: readFirstString(record, ["id"], companyName),
           companyName,
           brandName: readFirstString(record, ["brandName"], ""),
-          storeName: readFirstString(record, ["storeName", "store", "branch"], ""),
-          storeLocation: readFirstString(record, ["storeLocation", "location"], ""),
+          storeName: readFirstString(
+            record,
+            ["storeName", "store", "branch"],
+            "",
+          ),
+          storeLocation: readFirstString(
+            record,
+            ["storeLocation", "location"],
+            "",
+          ),
           address: readFirstString(record, ["address", "customerAddress"], ""),
-          vatNumber: readFirstString(record, ["vatNumber", "customerVatNumber"], ""),
+          vatNumber: readFirstString(
+            record,
+            ["vatNumber", "customerVatNumber"],
+            "",
+          ),
         };
       })
       .filter((client) => client.companyName);
@@ -350,7 +389,8 @@ export function QuotationsScreen() {
       const matchesQuery = !normalizedQuery || target.includes(normalizedQuery);
       const matchesStatus = status === "all" || quotation.status === status;
       const matchesCompany =
-        company === "all" || normalizeCompanyKey(quotation.companyName) === company;
+        company === "all" ||
+        normalizeCompanyKey(quotation.companyName) === company;
       const matchesFrom = !fromTime || issueTime >= fromTime;
       const matchesTo = !toTime || issueTime <= toTime;
       const matchesMin = minValue === null || quotation.amount >= minValue;
@@ -369,7 +409,10 @@ export function QuotationsScreen() {
 
     return result.sort((a, b) => {
       if (sortBy === "oldest") {
-        return new Date(a.issueDate || 0).getTime() - new Date(b.issueDate || 0).getTime();
+        return (
+          new Date(a.issueDate || 0).getTime() -
+          new Date(b.issueDate || 0).getTime()
+        );
       }
 
       if (sortBy === "price-high") {
@@ -384,17 +427,30 @@ export function QuotationsScreen() {
         return a.companyName.localeCompare(b.companyName);
       }
 
-      return new Date(b.issueDate || 0).getTime() - new Date(a.issueDate || 0).getTime();
+      return (
+        new Date(b.issueDate || 0).getTime() -
+        new Date(a.issueDate || 0).getTime()
+      );
     });
-  }, [company, quotations, query, status, dateFrom, dateTo, minAmount, maxAmount, sortBy]);
+  }, [
+    company,
+    quotations,
+    query,
+    status,
+    dateFrom,
+    dateTo,
+    minAmount,
+    maxAmount,
+    sortBy,
+  ]);
 
   const stats = useMemo(() => {
     const totalValue = quotations.reduce((sum, item) => sum + item.amount, 0);
     const pending = quotations.filter((item) =>
-      ["draft", "sent"].includes(item.status)
+      ["draft", "sent"].includes(item.status),
     ).length;
     const approved = quotations.filter(
-      (item) => item.status === "approved"
+      (item) => item.status === "approved",
     ).length;
 
     return [
@@ -444,7 +500,7 @@ export function QuotationsScreen() {
       (item) =>
         item.description.trim() &&
         toNumber(item.quantity) > 0 &&
-        toNumber(item.unitPrice) > 0
+        toNumber(item.unitPrice) > 0,
     );
     const savedLineItems: QuotationLineItem[] = validLineItems.map(
       (item, index) => {
@@ -465,7 +521,7 @@ export function QuotationsScreen() {
           vatRate: itemVatRate,
           vatAmount,
         };
-      }
+      },
     );
     const subTotal = savedLineItems.reduce((sum, item) => sum + item.amount, 0);
     const itemVatRate = toNumber(vatRate);
@@ -484,7 +540,9 @@ export function QuotationsScreen() {
     }
 
     if (!validLineItems.length) {
-      setFormError("Add at least one product with description, quantity, and unit price.");
+      setFormError(
+        "Add at least one product with description, quantity, and unit price.",
+      );
       return;
     }
 
@@ -526,7 +584,7 @@ export function QuotationsScreen() {
       setFormError(
         caughtError instanceof Error
           ? caughtError.message
-          : "Quotation could not be saved."
+          : "Quotation could not be saved.",
       );
     } finally {
       setSubmitting(false);
@@ -540,31 +598,38 @@ export function QuotationsScreen() {
 
     try {
       const parsed = await parseQuotationDocument(file);
-      const sourceLines: Array<Partial<QuotationLineItem>> = (
-        parsed.lineItems.length
-          ? parsed.lineItems
-          : [
-              {
-                serialNo: 1,
-                description: parsed.scopeOfWork,
-                quantity: 1,
-                unitPrice: parsed.subTotal,
-                amount: parsed.subTotal,
-                vatRate: parsed.vatRate,
-                vatAmount: (parsed.subTotal * parsed.vatRate) / 100,
-              },
-            ]
-      );
+      const sourceLines: Array<Partial<QuotationLineItem>> = parsed.lineItems
+        .length
+        ? parsed.lineItems
+        : [
+            {
+              serialNo: 1,
+              description: parsed.scopeOfWork,
+              quantity: 1,
+              unitPrice: parsed.subTotal,
+              amount: parsed.subTotal,
+              vatRate: parsed.vatRate,
+              vatAmount: (parsed.subTotal * parsed.vatRate) / 100,
+            },
+          ];
       const importedLines = sourceLines.map((item, index) =>
         lineItemToDraft(
-          { ...item, vatRate: item.vatRate ?? parsed.vatRate, sqm: item.sqm ?? 0 },
+          {
+            ...item,
+            vatRate: item.vatRate ?? parsed.vatRate,
+            sqm: item.sqm ?? 0,
+          },
           index + 1,
-          parsed.vatRate
-        )
+          parsed.vatRate,
+        ),
       );
       setLineItems(importedLines);
       setShowSqm(false);
-      setVatRate(numberToInputText(parsed.vatRate) || numberToInputText(data.company.vatRate) || "15");
+      setVatRate(
+        numberToInputText(parsed.vatRate) ||
+          numberToInputText(data.company.vatRate) ||
+          "15",
+      );
       setClientSource("new");
       setSelectedClientId("");
       setQuotationCompanyName(parsed.companyName || "");
@@ -577,7 +642,7 @@ export function QuotationsScreen() {
       setFormError(
         quotationError instanceof Error
           ? quotationError.message
-          : "The quotation document could not be imported."
+          : "The quotation document could not be imported.",
       );
       setShowForm(true);
     } finally {
@@ -585,41 +650,79 @@ export function QuotationsScreen() {
     }
   }
 
-  function cancelEdit() { setEditingId(""); setDraft(null); }
-  async function saveEdit() { if (!draft) return; const original=data.quotations.find(item=>normalizeQuotation(item).id===draft.id); if(!original)return; await updateRecord("quotations",createPatchedQuotation(original,draft)); cancelEdit(); }
-  function updateDraft<TKey extends keyof ReturnType<typeof normalizeQuotation>>(key:TKey,value:ReturnType<typeof normalizeQuotation>[TKey]) { setDraft(current=>current?{...current,[key]:value}:current); }
+  function cancelEdit() {
+    setEditingId("");
+    setDraft(null);
+  }
+  async function saveEdit() {
+    if (!draft) return;
+    const original = data.quotations.find(
+      (item) => normalizeQuotation(item).id === draft.id,
+    );
+    if (!original) return;
+    setFormError("");
+    try {
+      await updateRecord("quotations", createPatchedQuotation(original, draft));
+      cancelEdit();
+    } catch (caught) {
+      setFormError(
+        caught instanceof Error
+          ? caught.message
+          : "Quotation could not be saved.",
+      );
+    }
+  }
+  function updateDraft<
+    TKey extends keyof ReturnType<typeof normalizeQuotation>,
+  >(key: TKey, value: ReturnType<typeof normalizeQuotation>[TKey]) {
+    setDraft((current) => (current ? { ...current, [key]: value } : current));
+  }
 
   async function handleStatusChange(
     quotation: ReturnType<typeof normalizeQuotation>,
-    nextStatus: string
+    nextStatus: string,
   ) {
-    await updateQuotationStatus(quotation.id, nextStatus as QuotationStatus);
+    setFormError("");
+    try {
+      await updateQuotationStatus(quotation.id, nextStatus as QuotationStatus);
+    } catch (caught) {
+      setFormError(
+        caught instanceof Error ? caught.message : "Status change failed.",
+      );
+    }
   }
 
   function handleDelete(quotation: ReturnType<typeof normalizeQuotation>) {
     window.setTimeout(() => {
       const confirmed = window.confirm(
-        `Delete quotation "${quotation.id}" for "${quotation.companyName}"?`
+        `Delete quotation "${quotation.id}" for "${quotation.companyName}"?`,
       );
 
       if (!confirmed) return;
 
+      if (editingId === quotation.id) cancelEdit();
       void deleteRecord("quotations", quotation.id).catch((caughtError) => {
         setFormError(
           caughtError instanceof Error
             ? caughtError.message
-            : "Quotation could not be deleted."
+            : "Quotation could not be deleted.",
         );
       });
     }, 0);
   }
 
-  async function handleExport(quotation: ReturnType<typeof normalizeQuotation>) {
+  async function handleExport(
+    quotation: ReturnType<typeof normalizeQuotation>,
+  ) {
     setFormError("");
     try {
       await exportQuotationPdf(quotation.raw, data.company);
     } catch (caughtError) {
-      setFormError(caughtError instanceof Error ? caughtError.message : "Quotation export failed.");
+      setFormError(
+        caughtError instanceof Error
+          ? caughtError.message
+          : "Quotation export failed.",
+      );
     }
   }
 
@@ -636,7 +739,11 @@ export function QuotationsScreen() {
               disabled={importing}
               onClick={() => fileInputRef.current?.click()}
             >
-              {importing ? <LoaderCircle className="spin" size={14} /> : <FileUp size={14} />}
+              {importing ? (
+                <LoaderCircle className="spin" size={14} />
+              ) : (
+                <FileUp size={14} />
+              )}
               {importing ? "Reading..." : "Import Excel / PDF"}
             </button>
             <button
@@ -671,19 +778,30 @@ export function QuotationsScreen() {
         }}
       />
 
-      {formError && !showForm ? <div className="form-message form-message--error">{formError}</div> : null}
+      {formError && !showForm ? (
+        <div className="form-message form-message--error">{formError}</div>
+      ) : null}
 
       {showForm ? (
-        <form key={importDraft?.remarks || "manual"} className="card form-card" onSubmit={handleCreate}>
+        <form
+          key={importDraft?.remarks || "manual"}
+          className="card form-card"
+          onSubmit={handleCreate}
+        >
           {importDraft ? (
             <div className="form-message form-message--success">
-              Document read successfully. Review the extracted fields before saving.
+              Document read successfully. Review the extracted fields before
+              saving.
             </div>
           ) : null}
           <div className="form-grid">
             <label className="field">
               <span>Quotation No.</span>
-              <input name="id" defaultValue={importDraft?.id || nextQuotationId} required />
+              <input
+                name="id"
+                defaultValue={importDraft?.id || nextQuotationId}
+                required
+              />
             </label>
 
             <label className="field">
@@ -707,14 +825,20 @@ export function QuotationsScreen() {
                 }}
               >
                 <option value="new">Brand New Client</option>
-                <option value="saved" disabled={!clientOptions.length}>Saved Client</option>
+                <option value="saved" disabled={!clientOptions.length}>
+                  Saved Client
+                </option>
               </select>
             </label>
 
             {clientSource === "saved" ? (
               <label className="field">
                 <span>Saved Client</span>
-                <select value={selectedClientId} onChange={(event) => applySavedClient(event.target.value)} required>
+                <select
+                  value={selectedClientId}
+                  onChange={(event) => applySavedClient(event.target.value)}
+                  required
+                >
                   {clientOptions.map((client) => (
                     <option key={client.id} value={client.id}>
                       {client.companyName}
@@ -730,7 +854,9 @@ export function QuotationsScreen() {
                 name="companyName"
                 placeholder="Company / client name"
                 value={quotationCompanyName}
-                onChange={(event) => setQuotationCompanyName(event.target.value)}
+                onChange={(event) =>
+                  setQuotationCompanyName(event.target.value)
+                }
                 readOnly={clientSource === "saved"}
                 required
               />
@@ -755,7 +881,9 @@ export function QuotationsScreen() {
                   <input
                     name="customerVatNumber"
                     value={quotationCustomerVatNumber}
-                    onChange={(event) => setQuotationCustomerVatNumber(event.target.value)}
+                    onChange={(event) =>
+                      setQuotationCustomerVatNumber(event.target.value)
+                    }
                   />
                 </label>
                 <label className="field">
@@ -775,7 +903,9 @@ export function QuotationsScreen() {
                   <input
                     name="customerAddress"
                     value={quotationCustomerAddress}
-                    onChange={(event) => setQuotationCustomerAddress(event.target.value)}
+                    onChange={(event) =>
+                      setQuotationCustomerAddress(event.target.value)
+                    }
                   />
                 </label>
               </>
@@ -783,7 +913,12 @@ export function QuotationsScreen() {
 
             <label className="field">
               <span>Date</span>
-              <input name="issueDate" type="date" defaultValue={importDraft?.issueDate || today()} required />
+              <input
+                name="issueDate"
+                type="date"
+                defaultValue={importDraft?.issueDate || today()}
+                required
+              />
             </label>
 
             <label className="field">
@@ -792,13 +927,26 @@ export function QuotationsScreen() {
                 name="amount"
                 type="text"
                 inputMode="decimal"
-                value={quotationTotals.total > 0 ? quotationTotals.total.toFixed(2) : ""}
+                value={
+                  quotationTotals.total > 0
+                    ? quotationTotals.total.toFixed(2)
+                    : ""
+                }
                 placeholder="Auto calculated"
                 readOnly
               />
             </label>
 
-            <label className="field"><span>Currency</span><input name="currency" defaultValue={importDraft?.currency || data.company.currency || "SAR"} required /></label>
+            <label className="field">
+              <span>Currency</span>
+              <input
+                name="currency"
+                defaultValue={
+                  importDraft?.currency || data.company.currency || "SAR"
+                }
+                required
+              />
+            </label>
             <label className="field">
               <span>VAT Rate %</span>
               <input
@@ -808,7 +956,9 @@ export function QuotationsScreen() {
                 placeholder="15"
                 required
                 onFocus={(event) => event.currentTarget.select()}
-                onChange={(event) => setVatRate(normalizeDecimalInput(event.target.value))}
+                onChange={(event) =>
+                  setVatRate(normalizeDecimalInput(event.target.value))
+                }
               />
             </label>
             <label className="field sqm-toggle">
@@ -819,35 +969,158 @@ export function QuotationsScreen() {
                 onChange={(event) => setShowSqm(event.target.checked)}
               />
             </label>
-
           </div>
 
           <div className="table-wrap">
             <table className="data-table project-line-items">
-              <thead><tr><th>#</th><th>Description</th><th>Qty</th>{showSqm ? <th>SQM</th> : null}<th>Unit Price</th><th>Amount</th><th /></tr></thead>
-              <tbody>{lineItems.map((item, index) => <tr key={index}>
-                <td>{index + 1}</td>
-                <td><textarea className="inline-input inline-input--wide" value={item.description} required onChange={(event) => updateLineItem(index, { description: event.target.value })} /></td>
-                <td><input className="inline-input" type="text" inputMode="decimal" value={item.quantity} placeholder="Qty" required onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateLineItem(index, { quantity: normalizeDecimalInput(event.target.value) })} /></td>
-                {showSqm ? <td><input className="inline-input" type="text" inputMode="decimal" value={item.sqm ?? ""} placeholder="SQM" onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateLineItem(index, { sqm: normalizeDecimalInput(event.target.value) })} /></td> : null}
-                <td><input className="inline-input" type="text" inputMode="decimal" value={item.unitPrice} placeholder="Unit price" required onFocus={(event) => event.currentTarget.select()} onChange={(event) => updateLineItem(index, { unitPrice: normalizeDecimalInput(event.target.value) })} /></td>
-                <td>{moneyOrEmpty(item.amount)}</td>
-                <td><button className="icon-button icon-button--danger" type="button" disabled={lineItems.length === 1} onClick={() => setLineItems((items) => items.filter((_, itemIndex) => itemIndex !== index).map((entry, itemIndex) => ({ ...entry, serialNo: itemIndex + 1 })))}><Trash2 size={15} /></button></td>
-              </tr>)}</tbody>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Description</th>
+                  <th>Qty</th>
+                  {showSqm ? <th>SQM</th> : null}
+                  <th>Unit Price</th>
+                  <th>Amount</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {lineItems.map((item, index) => (
+                  <tr key={index}>
+                    <td>{index + 1}</td>
+                    <td>
+                      <textarea
+                        className="inline-input inline-input--wide"
+                        value={item.description}
+                        required
+                        onChange={(event) =>
+                          updateLineItem(index, {
+                            description: event.target.value,
+                          })
+                        }
+                      />
+                    </td>
+                    <td>
+                      <input
+                        className="inline-input"
+                        type="text"
+                        inputMode="decimal"
+                        value={item.quantity}
+                        placeholder="Qty"
+                        required
+                        onFocus={(event) => event.currentTarget.select()}
+                        onChange={(event) =>
+                          updateLineItem(index, {
+                            quantity: normalizeDecimalInput(event.target.value),
+                          })
+                        }
+                      />
+                    </td>
+                    {showSqm ? (
+                      <td>
+                        <input
+                          className="inline-input"
+                          type="text"
+                          inputMode="decimal"
+                          value={item.sqm ?? ""}
+                          placeholder="SQM"
+                          onFocus={(event) => event.currentTarget.select()}
+                          onChange={(event) =>
+                            updateLineItem(index, {
+                              sqm: normalizeDecimalInput(event.target.value),
+                            })
+                          }
+                        />
+                      </td>
+                    ) : null}
+                    <td>
+                      <input
+                        className="inline-input"
+                        type="text"
+                        inputMode="decimal"
+                        value={item.unitPrice}
+                        placeholder="Unit price"
+                        required
+                        onFocus={(event) => event.currentTarget.select()}
+                        onChange={(event) =>
+                          updateLineItem(index, {
+                            unitPrice: normalizeDecimalInput(
+                              event.target.value,
+                            ),
+                          })
+                        }
+                      />
+                    </td>
+                    <td>{moneyOrEmpty(item.amount)}</td>
+                    <td>
+                      <button
+                        className="icon-button icon-button--danger"
+                        type="button"
+                        disabled={lineItems.length === 1}
+                        onClick={() =>
+                          setLineItems((items) =>
+                            items
+                              .filter((_, itemIndex) => itemIndex !== index)
+                              .map((entry, itemIndex) => ({
+                                ...entry,
+                                serialNo: itemIndex + 1,
+                              })),
+                          )
+                        }
+                      >
+                        <Trash2 size={15} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
             </table>
           </div>
-          <div className="form-actions"><span>Subtotal: {moneyOrEmpty(quotationTotals.subTotal) || "—"} · VAT ({vatRate || "0"}%): {moneyOrEmpty(quotationTotals.vatAmount) || "—"} · Total: {moneyOrEmpty(quotationTotals.total) || "—"}</span><button className="button" type="button" onClick={() => setLineItems((items) => [...items, emptyLineItem(items.length + 1)])}><Plus size={14} />Add Item</button></div>
+          <div className="form-actions">
+            <span>
+              Subtotal: {moneyOrEmpty(quotationTotals.subTotal) || "—"} · VAT (
+              {vatRate || "0"}%):{" "}
+              {moneyOrEmpty(quotationTotals.vatAmount) || "—"} · Total:{" "}
+              {moneyOrEmpty(quotationTotals.total) || "—"}
+            </span>
+            <button
+              className="button"
+              type="button"
+              onClick={() =>
+                setLineItems((items) => [
+                  ...items,
+                  emptyLineItem(items.length + 1),
+                ])
+              }
+            >
+              <Plus size={14} />
+              Add Item
+            </button>
+          </div>
 
           {formError ? (
             <div className="form-message form-message--error">{formError}</div>
           ) : null}
 
           <div className="form-actions">
-            <button type="button" className="button" onClick={() => { setShowForm(false); setImportDraft(null); resetQuotationClientFields(); setFormError(""); }}>
+            <button
+              type="button"
+              className="button"
+              onClick={() => {
+                setShowForm(false);
+                setImportDraft(null);
+                resetQuotationClientFields();
+                setFormError("");
+              }}
+            >
               Cancel
             </button>
 
-            <button className="button button--primary" type="submit" disabled={submitting}>
+            <button
+              className="button button--primary"
+              type="submit"
+              disabled={submitting}
+            >
               {submitting ? "Saving..." : "Save Quotation"}
             </button>
           </div>
@@ -903,25 +1176,51 @@ export function QuotationsScreen() {
 
         <label className="compact-filter-field">
           <span>From date</span>
-          <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(event) => setDateFrom(event.target.value)}
+          />
         </label>
 
         <label className="compact-filter-field">
           <span>To date</span>
-          <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(event) => setDateTo(event.target.value)}
+          />
         </label>
 
         <label className="compact-filter-field">
           <span>Min price</span>
-          <input inputMode="decimal" value={minAmount} onChange={(event) => setMinAmount(normalizeDecimalInput(event.target.value))} placeholder="Min" />
+          <input
+            inputMode="decimal"
+            value={minAmount}
+            onChange={(event) =>
+              setMinAmount(normalizeDecimalInput(event.target.value))
+            }
+            placeholder="Min"
+          />
         </label>
 
         <label className="compact-filter-field">
           <span>Max price</span>
-          <input inputMode="decimal" value={maxAmount} onChange={(event) => setMaxAmount(normalizeDecimalInput(event.target.value))} placeholder="Any" />
+          <input
+            inputMode="decimal"
+            value={maxAmount}
+            onChange={(event) =>
+              setMaxAmount(normalizeDecimalInput(event.target.value))
+            }
+            placeholder="Any"
+          />
         </label>
 
-        <select className="select" value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+        <select
+          className="select"
+          value={sortBy}
+          onChange={(event) => setSortBy(event.target.value)}
+        >
           <option value="newest">Newest first</option>
           <option value="oldest">Oldest first</option>
           <option value="price-high">Price high to low</option>
@@ -952,7 +1251,8 @@ export function QuotationsScreen() {
           <div>
             <h2>Quotation Tracker</h2>
             <p>
-              Showing {filteredQuotations.length} of {quotations.length} quotations. Tap a row to open details and actions.
+              Showing {filteredQuotations.length} of {quotations.length}{" "}
+              quotations. Tap a row to open details and actions.
             </p>
           </div>
         </div>
@@ -982,7 +1282,10 @@ export function QuotationsScreen() {
                       className="plain-data-row"
                       key={quotation.id}
                       onClick={() => {
-                        if (!isEditing) router.push(`${routes.recordDetail}?type=quotation&id=${encodeURIComponent(quotation.id)}`);
+                        if (!isEditing)
+                          router.push(
+                            `${routes.recordDetail}?type=quotation&id=${encodeURIComponent(quotation.id)}`,
+                          );
                       }}
                     >
                       <td className="strong-cell">{quotation.id}</td>
@@ -1022,28 +1325,24 @@ export function QuotationsScreen() {
                           <input
                             className="inline-input"
                             value={draft.store}
-                            onChange={(event) => updateDraft("store", event.target.value)}
+                            onChange={(event) =>
+                              updateDraft("store", event.target.value)
+                            }
                           />
                         ) : (
                           quotation.store || "—"
                         )}
                       </td>
 
-
                       <td className="money-cell">
                         {isEditing ? (
+                          /* Quotation totals are derived from the item rows. */
                           <input
                             className="inline-input"
                             type="text"
-                            inputMode="decimal"
                             value={numberToInputText(draft.amount)}
-                            onFocus={(event) => event.currentTarget.select()}
-                            onChange={(event) =>
-                              updateDraft(
-                                "amount",
-                                toNumber(normalizeDecimalInput(event.target.value))
-                              )
-                            }
+                            readOnly
+                            title="Edit quotation items to change the total"
                           />
                         ) : (
                           money(quotation.amount)
@@ -1058,12 +1357,15 @@ export function QuotationsScreen() {
                             if (isEditing) {
                               updateDraft(
                                 "status",
-                                event.target.value as QuotationStatus
+                                event.target.value as QuotationStatus,
                               );
                               return;
                             }
 
-                            void handleStatusChange(quotation, event.target.value);
+                            void handleStatusChange(
+                              quotation,
+                              event.target.value,
+                            );
                           }}
                         >
                           {statusOptions.map((item) => (
@@ -1080,10 +1382,11 @@ export function QuotationsScreen() {
                         ) : null}
                       </td>
 
-
-
                       <td>
-                        <div className="row-actions" onClick={(event) => event.stopPropagation()}>
+                        <div
+                          className="row-actions"
+                          onClick={(event) => event.stopPropagation()}
+                        >
                           {isEditing ? (
                             <>
                               <button
@@ -1118,7 +1421,17 @@ export function QuotationsScreen() {
                               <Link
                                 className="icon-button"
                                 href={`${routes.quotationInvoice}?serial=${encodeURIComponent(quotation.serialNumber)}`}
-                                title={data.invoices.some((invoice) => invoice.quotationSerialNumber === quotation.serialNumber || (!invoice.quotationSerialNumber && invoice.quotationNo === quotation.id)) ? "View or edit invoice" : "Add invoice"}
+                                title={
+                                  data.invoices.some(
+                                    (invoice) =>
+                                      invoice.quotationSerialNumber ===
+                                        quotation.serialNumber ||
+                                      (!invoice.quotationSerialNumber &&
+                                        invoice.quotationNo === quotation.id),
+                                  )
+                                    ? "View or edit invoice"
+                                    : "Add invoice"
+                                }
                               >
                                 <FileUp size={17} />
                               </Link>
@@ -1165,10 +1478,14 @@ export function QuotationsScreen() {
                     <span>Customer / Company History</span>
                     <h3>{group.company}</h3>
                     <small>
-                      {group.items.length} quotation(s) · {group.approved} approved · Total {money(group.total)}
+                      {group.items.length} quotation(s) · {group.approved}{" "}
+                      approved · Total {money(group.total)}
                     </small>
                   </div>
-                  <Link className="button" href={`${routes.history}?company=${encodeURIComponent(normalizeCompanyKey(group.company))}`}>
+                  <Link
+                    className="button"
+                    href={`${routes.history}?company=${encodeURIComponent(normalizeCompanyKey(group.company))}`}
+                  >
                     History
                   </Link>
                 </header>
@@ -1177,17 +1494,26 @@ export function QuotationsScreen() {
                   {group.items.map((quotation) => {
                     const hasInvoice = data.invoices.some(
                       (invoice) =>
-                        invoice.quotationSerialNumber === quotation.serialNumber ||
-                        (!invoice.quotationSerialNumber && invoice.quotationNo === quotation.id)
+                        invoice.quotationSerialNumber ===
+                          quotation.serialNumber ||
+                        (!invoice.quotationSerialNumber &&
+                          invoice.quotationNo === quotation.id),
                     );
 
                     return (
-                      <article className="mobile-record-card" key={quotation.id}>
+                      <article
+                        className="mobile-record-card"
+                        key={quotation.id}
+                      >
                         <header>
                           <div>
                             <span>Quotation / Job</span>
                             <strong>{quotation.serialNumber}</strong>
-                            <small>{quotation.id} · {quotation.issueDate || "No date"} · {quotation.store || "No branch"}</small>
+                            <small>
+                              {quotation.id} ·{" "}
+                              {quotation.issueDate || "No date"} ·{" "}
+                              {quotation.store || "No branch"}
+                            </small>
                           </div>
                           <StatusBadge value={quotation.status} />
                         </header>
@@ -1212,10 +1538,17 @@ export function QuotationsScreen() {
                           <select
                             className="inline-select mobile-status-select"
                             value={quotation.status}
-                            onChange={(event) => void handleStatusChange(quotation, event.target.value)}
+                            onChange={(event) =>
+                              void handleStatusChange(
+                                quotation,
+                                event.target.value,
+                              )
+                            }
                           >
                             {statusOptions.map((item) => (
-                              <option key={item.value} value={item.value}>{item.label}</option>
+                              <option key={item.value} value={item.value}>
+                                {item.label}
+                              </option>
                             ))}
                           </select>
                         </div>
@@ -1226,7 +1559,9 @@ export function QuotationsScreen() {
                             href={`${routes.quotationInvoice}?serial=${encodeURIComponent(quotation.serialNumber)}`}
                           >
                             <FileUp size={14} />
-                            {hasInvoice ? "View / Edit Invoice" : "Create / Upload Invoice"}
+                            {hasInvoice
+                              ? "View / Edit Invoice"
+                              : "Create / Upload Invoice"}
                           </Link>
 
                           <button
@@ -1266,7 +1601,6 @@ export function QuotationsScreen() {
           )}
         </div>
       </section>
-
     </>
   );
 }

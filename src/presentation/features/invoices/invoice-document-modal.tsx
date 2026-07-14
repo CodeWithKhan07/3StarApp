@@ -28,6 +28,9 @@ export function InvoiceDocumentForm({
   const [companyName, setCompanyName] = useState(draft?.companyName || "");
   const [customerAddress, setCustomerAddress] = useState(draft?.customerAddress || "");
   const [customerVatNumber, setCustomerVatNumber] = useState(draft?.customerVatNumber || "");
+  const [discountAmount, setDiscountAmount] = useState(
+    draft?.discountAmount ?? 0,
+  );
   const [lineItems, setLineItems] = useState<NonNullable<Invoice["lineItems"]>>(
     draft?.lineItems.length
       ? draft.lineItems
@@ -52,8 +55,12 @@ export function InvoiceDocumentForm({
         sum + (item.vatAmount ?? (item.amount * item.vatRate) / 100),
       0,
     );
-    return { subTotal, vatAmount, amount: subTotal + vatAmount };
-  }, [lineItems]);
+    return {
+      subTotal,
+      vatAmount,
+      amount: subTotal + vatAmount - discountAmount,
+    };
+  }, [discountAmount, lineItems]);
   const nextInvoiceId = useMemo(
     () => createNextInvoiceId(data.invoices.map((invoice) => invoice.id)),
     [data.invoices],
@@ -112,7 +119,7 @@ export function InvoiceDocumentForm({
       invoiceDate: String(form.get("invoiceDate") || today()),
       dueDate: String(form.get("dueDate") || ""),
       paymentTerms: String(form.get("paymentTerms") || "").trim(),
-      amount: totals.amount - number(form.get("discountAmount")),
+      amount: totals.amount,
       received: number(form.get("received")),
       paymentDate: String(form.get("paymentDate") || ""),
       paymentMode: String(form.get("paymentMode") || "").trim(),
@@ -132,7 +139,7 @@ export function InvoiceDocumentForm({
       subTotal: totals.subTotal,
       vatRate: lineItems[0]?.vatRate ?? data.company.vatRate,
       vatAmount: totals.vatAmount,
-      discountAmount: number(form.get("discountAmount")),
+      discountAmount,
       lineItems,
     };
 
@@ -347,8 +354,12 @@ export function InvoiceDocumentForm({
               <input
                 name="discountAmount"
                 type="number"
+                min="0"
                 step="0.01"
-                defaultValue={draft?.discountAmount}
+                value={discountAmount}
+                onChange={(event) =>
+                  setDiscountAmount(Number(event.target.value) || 0)
+                }
               />
             </label>
             <label className="field">

@@ -47,3 +47,17 @@ export function createNextInvoiceId(existingIds: string[], startAt = 85) {
 
   return `INV-${String(highestNumericId + 1).padStart(6, "0")}`;
 }
+
+// Project IDs advance from the highest existing numeric suffix so deletes
+// cannot make a later create reuse an ID that is still present.
+export function createNextProjectId(existingIds: string[], startAt = 1) {
+  const highestNumericId = existingIds.reduce((highest, id) => {
+    const numericText = id.trim().match(/^(?:PROJ[-\s]*)?0*(\d+)$/i)?.[1];
+
+    if (!numericText) return highest;
+
+    return Math.max(highest, Number(numericText));
+  }, startAt - 1);
+
+  return `PROJ-${String(highestNumericId + 1).padStart(5, "0")}`;
+}

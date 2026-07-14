@@ -25,7 +25,6 @@ export function InvoiceUploadModal({
 
   const [invoiceId, setInvoiceId] = useState(nextInvoiceId);
   const [invoiceDate, setInvoiceDate] = useState(today());
-  const [amount, setAmount] = useState(String(quotation.amount));
   const [paymentMode, setPaymentMode] = useState("");
   const [remarks, setRemarks] = useState("");
 
@@ -42,7 +41,6 @@ export function InvoiceUploadModal({
       await createInvoiceFromQuotation(quotation.id, {
         id: invoiceId.trim(),
         invoiceDate,
-        amount: Number(amount) || quotation.amount,
         paymentMode: paymentMode.trim(),
         remarks: remarks.trim(),
       });
@@ -106,12 +104,12 @@ export function InvoiceUploadModal({
 
             <label className="field">
               <span>Amount (SAR)</span>
+              {/* The invoice inherits the quotation's verified item total. */}
               <input
                 type="number"
-                min="0"
                 step="0.01"
-                value={amount}
-                onChange={(event) => setAmount(event.target.value)}
+                value={quotation.amount}
+                readOnly
               />
             </label>
 

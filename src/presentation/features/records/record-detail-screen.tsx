@@ -1,6 +1,9 @@
 "use client";
 
-import { exportInvoicePdf, exportQuotationPdf } from "@/application/services/document-export";
+import {
+    exportInvoicePdf,
+    exportQuotationPdf,
+} from "@/application/services/document-export";
 import type { Invoice, Quotation } from "@/domain/entities/business";
 import { routes } from "@/lib/routes";
 import { PageHeader, StatusBadge } from "@/presentation/components/ui";
@@ -21,9 +24,12 @@ function backRoute(type: RecordType) {
 }
 
 function editRoute(type: RecordType, id: string) {
-  if (type === "client") return `${routes.editClient}?id=${encodeURIComponent(id)}`;
-  if (type === "project") return `${routes.editProject}?id=${encodeURIComponent(id)}`;
-  if (type === "invoice") return `${routes.editInvoice}?id=${encodeURIComponent(id)}`;
+  if (type === "client")
+    return `${routes.editClient}?id=${encodeURIComponent(id)}`;
+  if (type === "project")
+    return `${routes.editProject}?id=${encodeURIComponent(id)}`;
+  if (type === "invoice")
+    return `${routes.editInvoice}?id=${encodeURIComponent(id)}`;
   return `${routes.editQuotation}?id=${encodeURIComponent(id)}`;
 }
 
@@ -45,8 +51,14 @@ export function RecordDetailScreen() {
         status: record.contractStatus,
         fields: [
           ["Contact", record.contactPerson || "-"],
-          ["Mobile / Email", `${record.mobile || "-"} / ${record.email || "-"}`],
-          ["VAT / CR", `${record.vatNumber || "-"} / ${record.crNumber || "-"}`],
+          [
+            "Mobile / Email",
+            `${record.mobile || "-"} / ${record.email || "-"}`,
+          ],
+          [
+            "VAT / CR",
+            `${record.vatNumber || "-"} / ${record.crNumber || "-"}`,
+          ],
           ["Store", record.storeName || "-"],
           ["Address", record.address || "-"],
           ["Remarks", record.remarks || "-"],
@@ -63,7 +75,10 @@ export function RecordDetailScreen() {
         status: record.status,
         fields: [
           ["Company", record.company],
-          ["Store / Location", `${record.store || "-"} / ${record.location || "No location"}`],
+          [
+            "Store / Location",
+            `${record.store || "-"} / ${record.location || "No location"}`,
+          ],
           ["Description", record.workDescription || "-"],
           ["Category", record.category || "-"],
           ["Value", money(record.value)],
@@ -84,7 +99,13 @@ export function RecordDetailScreen() {
         fields: [
           ["Company", record.companyName],
           ["Project", record.project || "-"],
-          ["PO / Quotation", record.purchaseOrderNumber || record.quotationSerialNumber || record.quotationNo || "-"],
+          [
+            "PO / Quotation",
+            record.purchaseOrderNumber ||
+              record.quotationSerialNumber ||
+              record.quotationNo ||
+              "-",
+          ],
           ["Amount", money(record.amount)],
           ["Received", money(record.received)],
           ["Balance", money(record.amount - record.received)],
@@ -95,7 +116,9 @@ export function RecordDetailScreen() {
       };
     }
     if (type === "quotation") {
-      const record = data.quotations.find((item) => item.id === id || item.serialNumber === id);
+      const record = data.quotations.find(
+        (item) => item.id === id || item.serialNumber === id,
+      );
       if (!record) return null;
       return {
         title: record.serialNumber || record.id,
@@ -117,14 +140,18 @@ export function RecordDetailScreen() {
   }, [data.clients, data.invoices, data.projects, data.quotations, id, type]);
 
   async function printRecord() {
+    if (!detail) {
+      setError("Record not found. Please refresh the page.");
+      return;
+    }
     setError("");
     try {
-      if (type === "invoice") {
-        await exportInvoicePdf(detail?.raw as Invoice, data.company);
+      if (type === "invoice" && detail.raw) {
+        await exportInvoicePdf(detail.raw as Invoice, data.company);
         return;
       }
-      if (type === "quotation") {
-        await exportQuotationPdf(detail?.raw as Quotation, data.company);
+      if (type === "quotation" && detail.raw) {
+        await exportQuotationPdf(detail.raw as Quotation, data.company);
         return;
       }
       window.print();
@@ -138,10 +165,22 @@ export function RecordDetailScreen() {
     window.setTimeout(() => {
       if (!window.confirm(`Move "${detail.title}" to Trash?`)) return;
       const collection =
-        type === "client" ? "clients" :
-        type === "project" ? "projects" :
-        type === "invoice" ? "invoices" : "quotations";
-      void deleteRecord(collection, id).then(() => router.push(backRoute(type)));
+        type === "client"
+          ? "clients"
+          : type === "project"
+            ? "projects"
+            : type === "invoice"
+              ? "invoices"
+              : "quotations";
+      void deleteRecord(collection, id)
+        .then(() => router.push(backRoute(type)))
+        .catch((caught) => {
+          setError(
+            caught instanceof Error
+              ? caught.message
+              : "Delete operation failed. Please try again.",
+          );
+        });
     }, 0);
   }
 
@@ -150,7 +189,9 @@ export function RecordDetailScreen() {
       <section className="card empty-state">
         <h2>Record not found</h2>
         <p>The item may have been deleted or the link is invalid.</p>
-        <Link className="button" href={routes.dashboard}>Back to Dashboard</Link>
+        <Link className="button" href={routes.dashboard}>
+          Back to Dashboard
+        </Link>
       </section>
     );
   }
@@ -167,7 +208,9 @@ export function RecordDetailScreen() {
           </Link>
         }
       />
-      {error ? <div className="form-message form-message--error">{error}</div> : null}
+      {error ? (
+        <div className="form-message form-message--error">{error}</div>
+      ) : null}
       <section className="record-page-detail card">
         <header>
           <div>
@@ -186,15 +229,27 @@ export function RecordDetailScreen() {
           ))}
         </dl>
         <footer className="record-action-bar">
-          <button className="button" type="button" onClick={() => void printRecord()}>
-            {type === "invoice" || type === "quotation" ? <Download size={14} /> : <Printer size={14} />}
+          <button
+            className="button"
+            type="button"
+            onClick={() => void printRecord()}
+          >
+            {type === "invoice" || type === "quotation" ? (
+              <Download size={14} />
+            ) : (
+              <Printer size={14} />
+            )}
             Print
           </button>
           <Link className="button button--primary" href={editRoute(type, id)}>
             <Edit3 size={14} />
             Edit
           </Link>
-          <button className="button button--danger" type="button" onClick={removeRecord}>
+          <button
+            className="button button--danger"
+            type="button"
+            onClick={removeRecord}
+          >
             <Trash2 size={14} />
             Delete
           </button>

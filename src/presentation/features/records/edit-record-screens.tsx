@@ -33,6 +33,15 @@ const normalizeDecimalInput = (value: string) => {
   return integerWithoutLeadingZero;
 };
 
+// Legacy records without item rows derive a safe pre-tax fallback instead of
+// applying VAT a second time to an already tax-inclusive total.
+const fallbackSubTotal = (
+  amount: number,
+  subTotal?: number,
+  vatAmount = 0,
+  discountAmount = 0,
+) => subTotal ?? Math.max(0, amount - vatAmount + discountAmount);
+
 const invoiceStatusOptions: Array<{ label: string; value: Invoice["status"] }> = [
   { label: "Pending", value: "pending" },
   { label: "Partial", value: "partial" },
@@ -479,8 +488,8 @@ export function QuotationEditScreen() {
             description: record!.scopeOfWork,
             quantity: 1,
             sqm: 0,
-            unitPrice: record!.subTotal ?? record!.amount,
-            amount: record!.subTotal ?? record!.amount,
+            unitPrice: fallbackSubTotal(record!.amount, record!.subTotal, record!.vatAmount),
+            amount: fallbackSubTotal(record!.amount, record!.subTotal, record!.vatAmount),
             vatRate: record!.vatRate ?? data.company.vatRate,
             vatAmount: record!.vatAmount ?? 0,
           },
@@ -510,18 +519,20 @@ export function QuotationEditScreen() {
       await updateRecord("quotations", {
         ...record!,
         issueDate: text(f, "issueDate"),
-        validityDate: "",
+        // Fields not exposed by this form remain intact instead of being
+        // erased when an unrelated quotation value is edited.
+        validityDate: record!.validityDate,
         companyName: text(f, "companyName"),
         store: text(f, "store"),
         scopeOfWork:
           lineItems.find((item) => item.description.trim())?.description.trim() ||
           "",
         amount: subTotal + vatAmount,
-        followUpDate: "",
-        customerAddress: undefined,
-        customerVatNumber: undefined,
-        remarks: undefined,
-        termsAndConditions: undefined,
+        followUpDate: record!.followUpDate,
+        customerAddress: record!.customerAddress,
+        customerVatNumber: record!.customerVatNumber,
+        remarks: record!.remarks,
+        termsAndConditions: record!.termsAndConditions,
         currency: text(f, "currency") || data.company.currency,
         showSqm,
         lineItems,
@@ -635,8 +646,8 @@ export function QuotationEditScreen() {
                     serialNo: 1,
                     description: record.scopeOfWork,
                     quantity: 1,
-                    unitPrice: record.subTotal ?? record.amount,
-                    amount: record.subTotal ?? record.amount,
+                    unitPrice: fallbackSubTotal(record.amount, record.subTotal, record.vatAmount),
+                    amount: fallbackSubTotal(record.amount, record.subTotal, record.vatAmount),
                     vatRate: record.vatRate ?? data.company.vatRate,
                     vatAmount: record.vatAmount ?? 0,
                   },
@@ -724,8 +735,8 @@ export function InvoiceEditScreen() {
             description: record!.project,
             quantity: record!.amount ? 1 : 0,
             unitCode: "",
-            unitPrice: record!.subTotal ?? record!.amount,
-            amount: record!.subTotal ?? record!.amount,
+            unitPrice: fallbackSubTotal(record!.amount, record!.subTotal, record!.vatAmount, record!.discountAmount),
+            amount: fallbackSubTotal(record!.amount, record!.subTotal, record!.vatAmount, record!.discountAmount),
             vatRate: record!.vatRate ?? data.company.vatRate,
             vatAmount: record!.vatAmount ?? 0,
           },
@@ -1041,8 +1052,8 @@ export function InvoiceEditScreen() {
                     description: record.project,
                     quantity: record.amount ? 1 : 0,
                     unitCode: "",
-                    unitPrice: record.subTotal ?? record.amount,
-                    amount: record.subTotal ?? record.amount,
+                    unitPrice: fallbackSubTotal(record.amount, record.subTotal, record.vatAmount, record.discountAmount),
+                    amount: fallbackSubTotal(record.amount, record.subTotal, record.vatAmount, record.discountAmount),
                     vatRate: record.vatRate ?? data.company.vatRate,
                     vatAmount: record.vatAmount ?? 0,
                   },

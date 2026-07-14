@@ -1,7 +1,8 @@
 "use client";
 
 import { routes } from "@/lib/routes";
-import { PageHeader, StatusBadge } from "@/presentation/components/ui";
+import { matchesRecordQuery } from "@/application/services/record-query";
+import { DateRangeFields, PageHeader, StatusBadge } from "@/presentation/components/ui";
 import { money } from "@/presentation/data/sample-data";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
 import { collectCompanyNames, normalizeCompanyKey } from "@/presentation/utils/company-filters";
@@ -40,10 +41,11 @@ export function HistoryScreen() {
   const [query, setQuery] = useState("");
   const [company, setCompany] = useState(searchParams.get("company") || "all");
   const [section, setSection] = useState<"all" | "invoices" | "quotations">("all");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const companies = useMemo(() => collectCompanyNames(data), [data]);
   const items = useMemo<HistoryItem[]>(() => {
-    const normalizedQuery = query.trim().toLowerCase();
     const invoices: HistoryItem[] = data.invoices.map((invoice) => ({
       type: "invoice",
       id: invoice.id,
@@ -73,12 +75,15 @@ export function HistoryScreen() {
           section === "all" ||
           (section === "invoices" && item.type === "invoice") ||
           (section === "quotations" && item.type === "quotation");
-        const companyMatch = company === "all" || normalizeCompanyKey(item.company) === company;
-        const target = [item.type, item.id, item.company, item.reference, item.description, item.status].join(" ").toLowerCase();
-        return typeMatch && companyMatch && (!normalizedQuery || target.includes(normalizedQuery));
+        return typeMatch && matchesRecordQuery(
+          [item.type, item.id, item.company, item.reference, item.description, item.status],
+          item.company,
+          item.date,
+          { query, company, dateFrom, dateTo },
+        );
       })
       .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id, undefined, { numeric: true }));
-  }, [company, data.invoices, data.quotations, query, section]);
+  }, [company, data.invoices, data.quotations, dateFrom, dateTo, query, section]);
 
   return (
     <>
@@ -98,6 +103,12 @@ export function HistoryScreen() {
           <option value="invoices">Invoices Only</option>
           <option value="quotations">Quotations Only</option>
         </select>
+        <DateRangeFields
+          from={dateFrom}
+          to={dateTo}
+          onFromChange={setDateFrom}
+          onToChange={setDateTo}
+        />
       </section>
 
       <section className="card plain-data-card">

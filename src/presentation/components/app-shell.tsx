@@ -4,6 +4,7 @@ import { routes } from "@/lib/routes";
 import { BrandMark } from "@/presentation/components/brand-mark";
 import { useAuth } from "@/presentation/providers/auth-provider";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
+import { LoadingState } from "@/presentation/components/ui";
 import { useTheme } from "@/presentation/providers/theme-provider";
 import {
   BarChart3,
@@ -130,7 +131,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   const { user, logout } = useAuth();
-  const { data, syncState, forceSync } = useBusinessData();
+  const { data, loading, syncState, lastError, forceSync } = useBusinessData();
   const { theme, toggleTheme } = useTheme();
 
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -668,7 +669,24 @@ export function AppShell({ children }: { children: ReactNode }) {
           />
         ) : null}
 
-        <main className="app-content">{children}</main>
+        <main className="app-content">
+          {/* Cached data remains usable offline while sync failures stay
+              visible and retryable at the shell level. */}
+          {lastError ? (
+            <div className="form-message form-message--error" role="alert">
+              {lastError}
+              <button
+                className="button"
+                type="button"
+                disabled={syncing}
+                onClick={handleForceSync}
+              >
+                {syncing ? "Retrying..." : "Retry sync"}
+              </button>
+            </div>
+          ) : null}
+          {loading ? <LoadingState /> : children}
+        </main>
 
         <nav className="mobile-bottom-nav" aria-label="Mobile quick navigation">
           {mobileBottomItems.map(([label, href, Icon]) => {

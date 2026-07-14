@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["DOM", "ES2022"],
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "outDir": ".test-build",
+    "rootDir": "src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true
+  },
+  "include": [
+    "src/application/services/business-records.ts",
+    "src/application/services/record-query.ts",
+    "src/domain/entities/business.ts",
+    "src/lib/record-ids.ts"
+  ]
+}

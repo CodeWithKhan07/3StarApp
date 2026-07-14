@@ -1,9 +1,10 @@
 import { sendPasswordResetEmail, signInWithEmailAndPassword, signOut as firebaseSignOut } from "firebase/auth";
 import type { AuthRepository, AuthSession } from "@/domain/repositories/repositories";
-import { auth } from "@/infrastructure/firebase/client";
+import { getFirebaseAuth } from "@/infrastructure/firebase/client";
 
 export class FirebaseAuthRepository implements AuthRepository {
   async signIn(email: string, password: string): Promise<AuthSession> {
+    const auth = getFirebaseAuth();
     const credential = await signInWithEmailAndPassword(auth, email, password);
     return {
       uid: credential.user.uid,
@@ -13,10 +14,10 @@ export class FirebaseAuthRepository implements AuthRepository {
   }
 
   sendPasswordReset(email: string) {
-    return sendPasswordResetEmail(auth, email);
+    return sendPasswordResetEmail(getFirebaseAuth(), email);
   }
 
   signOut() {
-    return firebaseSignOut(auth);
+    return firebaseSignOut(getFirebaseAuth());
   }
 }

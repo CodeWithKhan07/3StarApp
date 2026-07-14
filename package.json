@@ -1,6 +1,8 @@
 {
   "name": "3star-business-suite",
   "version": "0.1.0",
+  "description": "Quotation, invoice, project, client, and payment management for 3 Star Automatic Door & Maintenance Works.",
+  "author": "3 Star Automatic Door & Maintenance Works",
   "private": true,
   "main": "electron/main.cjs",
   "scripts": {
@@ -9,6 +11,7 @@
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
+    "test:logic": "tsc -p tsconfig.logic-tests.json && node --test tests/business-records.test.cjs",
     "data:import": "node scripts/import-workbook.cjs",
     "desktop:dev": "concurrently -k \"next dev\" \"wait-on http://localhost:3000 && electron .\"",
     "desktop:build": "npm run build && electron-builder",
@@ -25,7 +28,7 @@
     "qrcode": "^1.5.4",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "xlsx": "^0.18.5"
+    "xlsx": "file:vendor/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

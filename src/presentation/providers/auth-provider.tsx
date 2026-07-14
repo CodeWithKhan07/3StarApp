@@ -1,6 +1,9 @@
 "use client";
 
-import { auth } from "@/infrastructure/firebase/client";
+import {
+  getFirebaseAuth,
+  isFirebaseConfigured,
+} from "@/infrastructure/firebase/client";
 import { ADMIN_EMAIL } from "@/lib/auth-config";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import {
@@ -29,6 +32,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!isFirebaseConfigured) {
+      queueMicrotask(() => setLoading(false));
+      return;
+    }
+
+    const auth = getFirebaseAuth();
     const unsubscribe = onAuthStateChanged(
       auth,
       async (nextUser) => {
@@ -56,7 +65,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       loading,
       logout: async () => {
-        await signOut(auth);
+        await signOut(getFirebaseAuth());
         setUser(null);
       },
     }),

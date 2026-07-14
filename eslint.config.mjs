@@ -11,8 +11,18 @@ const eslintConfig = defineConfig([
     ".next/**",
     "out/**",
     "build/**",
+    ".test-build/**",
+    // A legacy tracked backup under .vscode is not part of the application
+    // module graph and must not be linted as a second source tree.
+    ".vscode/src/**",
     "next-env.d.ts",
   ]),
+  // Node utility scripts intentionally use CommonJS because package.json
+  // does not opt the repository into ESM globally.
+  {
+    files: ["scripts/**/*.cjs", "electron/**/*.cjs", "tests/**/*.cjs"],
+    rules: { "@typescript-eslint/no-require-imports": "off" },
+  },
 ]);
 
 export default eslintConfig;

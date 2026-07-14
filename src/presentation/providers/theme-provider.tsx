@@ -35,8 +35,13 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("light");
 
   useEffect(() => {
-    const current = document.documentElement.getAttribute("data-theme");
-    setThemeState(current === "dark" ? "dark" : "light");
+    // Defer the DOM-to-state synchronization until after the current paint to
+    // avoid a cascading synchronous render inside the effect.
+    const frame = window.requestAnimationFrame(() => {
+      const current = document.documentElement.getAttribute("data-theme");
+      setThemeState(current === "dark" ? "dark" : "light");
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   const applyTheme = useCallback((next: Theme) => {

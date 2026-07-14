@@ -1,13 +1,14 @@
 "use client";
 
 import type {
-  Client,
-  CompanyProfile,
-  Invoice,
-  Quotation,
+    Client,
+    CompanyProfile,
+    Invoice,
+    Quotation,
 } from "@/domain/entities/business";
 import QRCode from "qrcode";
 import quotationStaticQr from "../../../assets/quotation-static-qr.jpeg";
+import quotationLogo from "../../../assets/quotationlogo.png";
 
 const defaultCompanyEmail = "ksajjad324@gmail.com";
 const legacyCompanyEmail = "shahzaibkhan3356@gmail.com";
@@ -18,7 +19,6 @@ function companyEmail(value?: string) {
     ? defaultCompanyEmail
     : email;
 }
-import quotationLogo from "../../../assets/quotationlogo.png";
 
 const escapeHtml = (value: unknown) =>
   String(value ?? "")
@@ -118,11 +118,16 @@ async function finishPrint(popup: Window, html: string) {
     if (popup.document.readyState === "complete") resolve();
     else popup.addEventListener("load", () => resolve(), { once: true });
   });
-  await Promise.all(
-    Array.from(popup.document.images).map((image) =>
-      image.decode().catch(() => undefined),
-    ),
-  );
+  const images = Array.from(popup.document.images);
+  if (images.length > 0) {
+    await Promise.allSettled(
+      images.map((image) =>
+        image.decode().catch((error) => {
+          console.warn("Image decode failed:", error);
+        }),
+      ),
+    );
+  }
   popup.focus();
   popup.print();
 }
@@ -185,7 +190,8 @@ export async function exportInvoicePdf(
         return `<tr><td class="c-index">${index + 1}</td><td class="c-desc">${escapeHtml(item.description)}</td><td class="c-qty">${amount(item.quantity).replace(/\.00$/, "")}${item.unitCode ? ` ${escapeHtml(item.unitCode)}` : ""}</td><td class="c-rate">${amount(item.unitPrice)}</td><td class="c-taxable">${amount(item.amount)}</td><td class="c-tax-rate">${amount(lineVatRate)}</td><td class="c-tax">${amount(lineVat)}</td><td class="c-amount">${amount(item.amount)}</td></tr>`;
       })
       .join("");
-    const itemRowPadding = lines.length > 4 ? 1.4 : lines.length > 2 ? 2.2 : 3.2;
+    const itemRowPadding =
+      lines.length > 4 ? 1.4 : lines.length > 2 ? 2.2 : 3.2;
     const supplierLegalName =
       invoice.supplierLegalName ||
       company.legalCompanyName ||

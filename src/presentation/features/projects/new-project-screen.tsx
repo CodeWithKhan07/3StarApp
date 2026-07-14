@@ -5,6 +5,7 @@ import {
   type QuotationLineItem,
 } from "@/application/services/quotation-import";
 import type { BusinessDataSet } from "@/domain/entities/business";
+import { createNextProjectId } from "@/lib/record-ids";
 import { routes } from "@/lib/routes";
 import { PageHeader } from "@/presentation/components/ui";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
@@ -44,10 +45,6 @@ const categoryOptions = [
 
 function today() {
   return new Date().toISOString().slice(0, 10);
-}
-
-function createProjectId(count: number) {
-  return `PROJ-${String(count + 1).padStart(5, "0")}`;
 }
 
 function toNumber(value: string) {
@@ -138,8 +135,9 @@ export function NewProjectScreen() {
   const [error, setError] = useState("");
 
   const nextProjectId = useMemo(() => {
-    return createProjectId(data.projects.length);
-  }, [data.projects.length]);
+    // IDs use the highest existing suffix, avoiding collisions after deletes.
+    return createNextProjectId(data.projects.map((project) => project.id));
+  }, [data.projects]);
 
   const clientOptions = useMemo(() => {
     return data.clients

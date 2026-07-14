@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-require-imports */
 const ExcelJS = require("exceljs");
 const fs = require("node:fs");
 const path = require("node:path");

@@ -21,7 +21,7 @@ const files = process.argv.slice(2);
       for (let r = 1; r <= max; r++) {
         const row = ws.getRow(r);
         const cells = [];
-        row.eachCell({ includeEmpty: false }, (cell, col) => {
+        row.eachCell({ includeEmpty: false }, (cell) => {
           let v = cell.value;
           if (v && typeof v === "object") {
             if (v.richText) v = v.richText.map((t) => t.text).join("");
