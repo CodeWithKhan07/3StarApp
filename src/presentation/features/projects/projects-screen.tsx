@@ -7,7 +7,7 @@ import { DateRangeFields, PageHeader, StatusBadge } from "@/presentation/compone
 import { money } from "@/presentation/data/sample-data";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
 import { collectCompanyNames, normalizeCompanyKey } from "@/presentation/utils/company-filters";
-import { Plus, Search, Trash2 } from "lucide-react";
+import { FileText, Plus, ReceiptText, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -199,11 +199,31 @@ export function ProjectsScreen() {
                 <th>Store / Location</th>
                 <th>Value</th>
                 <th>Status</th>
+                <th>Quotation</th>
+                <th>Invoice</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((item) => (
-                <tr
+              {filtered.map((item) => {
+                const quotation = data.quotations.find(
+                  (record) =>
+                    record.linkedProjectId === item.id ||
+                    (!record.linkedProjectId && item.quotationNo === record.id),
+                );
+                const invoice = data.invoices.find(
+                  (record) =>
+                    record.linkedProjectId === item.id ||
+                    (!record.linkedProjectId &&
+                      quotation &&
+                      (record.quotationSerialNumber === quotation.serialNumber ||
+                        (!record.quotationSerialNumber && record.quotationNo === quotation.id))) ||
+                    (!record.linkedProjectId &&
+                      !quotation &&
+                      Boolean(item.quotationNo) &&
+                      record.quotationNo === item.quotationNo),
+                );
+
+                return <tr
                   className="plain-data-row"
                   key={item.id}
                   onClick={() => router.push(`${routes.recordDetail}?type=project&id=${encodeURIComponent(item.id)}`)}
@@ -214,8 +234,34 @@ export function ProjectsScreen() {
                   <td>{item.store || "-"}<br /><small>{item.location || "No location"}</small></td>
                   <td className="money-cell">{money(item.amount)}</td>
                   <td><StatusBadge value={item.status} /></td>
-                </tr>
-              ))}
+                  <td>
+                    {quotation ? (
+                      <Link
+                        className="icon-button"
+                        href={`${routes.recordDetail}?type=quotation&id=${encodeURIComponent(quotation.id)}`}
+                        aria-label={`View quotation ${quotation.id} for project ${item.id}`}
+                        title={`View quotation ${quotation.id}`}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <FileText size={16} />
+                      </Link>
+                    ) : "—"}
+                  </td>
+                  <td>
+                    {invoice ? (
+                      <Link
+                        className="icon-button"
+                        href={`${routes.recordDetail}?type=invoice&id=${encodeURIComponent(invoice.id)}`}
+                        aria-label={`View invoice ${invoice.id} for project ${item.id}`}
+                        title={`View invoice ${invoice.id}`}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <ReceiptText size={16} />
+                      </Link>
+                    ) : "—"}
+                  </td>
+                </tr>;
+              })}
             </tbody>
           </table>
         </div>
