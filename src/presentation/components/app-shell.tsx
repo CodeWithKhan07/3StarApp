@@ -25,6 +25,7 @@ import {
   ReceiptText,
   Search,
   Settings,
+  Sparkles,
   Sun,
   Trash2,
   Upload,
@@ -61,7 +62,7 @@ const navGroups = [
   {
     label: "Insights & Data",
     items: [
-      ["Income & Profit", routes.analytics, CircleDollarSign],
+      ["Profit & Expenses", routes.analytics, CircleDollarSign],
       ["Statements", routes.statements, FileBarChart],
       ["History", routes.history, History],
       ["Reports", routes.reports, BarChart3],
@@ -121,6 +122,7 @@ function isActiveRoute(pathname: string, href: string) {
   if (href === routes.quotations && pathname.startsWith("/quotations"))
     return true;
   if (href === routes.invoices && pathname.startsWith("/invoices")) return true;
+  if (href === routes.analytics && pathname.startsWith("/analytics")) return true;
   if (href === routes.excelExport && pathname.startsWith("/excel-export"))
     return true;
   if (href === routes.trash && pathname.startsWith("/trash")) return true;
@@ -684,17 +686,27 @@ export function AppShell({ children }: { children: ReactNode }) {
               aria-label={
                 theme === "dark"
                   ? "Switch to light theme"
-                  : "Switch to dark theme"
+                  : theme === "professional"
+                  ? "Switch to dark theme"
+                  : "Switch to professional theme"
               }
               title={
                 theme === "dark"
                   ? "Switch to light theme"
-                  : "Switch to dark theme"
+                  : theme === "professional"
+                  ? "Switch to dark theme"
+                  : "Switch to professional theme"
               }
               onClick={toggleTheme}
               type="button"
             >
-              {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+              {theme === "dark" ? (
+                <Sun size={17} />
+              ) : theme === "professional" ? (
+                <Moon size={17} />
+              ) : (
+                <Sparkles size={17} />
+              )}
             </button>
 
             <button aria-label="Notifications" type="button">

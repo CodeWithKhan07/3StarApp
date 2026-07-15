@@ -36,6 +36,7 @@ export const routes = {
 
   reports: "/reports",
   analytics: "/analytics",
+  manageProfitBalance: "/analytics/manage-balance",
   settings: "/settings",
 } as const;
 

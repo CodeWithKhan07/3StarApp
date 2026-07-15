@@ -36,7 +36,13 @@ export function AnalyticsScreen() {
   const totals = useMemo(() => {
     const income = paidInvoices.reduce((sum, invoice) => sum + invoice.received, 0);
     const profit = paidInvoices.reduce((sum, invoice) => sum + (invoice.profitAmount || 0), 0);
-    return { income, profit, costs: income - profit };
+    const employeePayments = paidInvoices.reduce(
+      (sum, invoice) => sum + (invoice.profitAllocation?.employeePayments.reduce((employeeSum, payment) => employeeSum + payment.amount, 0) || 0),
+      0,
+    );
+    const companyExpenses = paidInvoices.reduce((sum, invoice) => sum + (invoice.profitAllocation?.companyExpenses || 0), 0);
+    const companyProfit = paidInvoices.reduce((sum, invoice) => sum + (invoice.profitAllocation?.companyProfit || 0), 0);
+    return { income, profit, employeePayments, companyExpenses, companyProfit };
   }, [paidInvoices]);
 
   const byClient = useMemo(() => {
@@ -53,7 +59,7 @@ export function AnalyticsScreen() {
 
   return (
     <>
-      <PageHeader title="Income & Profit Analytics" description="Paid invoice income and recorded profit, grouped by client and payment date." />
+      <PageHeader title="Profit & Expenses" description="Manage paid transaction profit, employee payouts, retained company profit, and company expenses." />
 
       <section className="card analytics-filter-bar">
         <select className="select" value={client} onChange={(event) => setClient(event.target.value)}>
@@ -67,8 +73,9 @@ export function AnalyticsScreen() {
       <section className="metrics analytics-metrics">
         <article className="metric-card card"><ReceiptText size={18}/><p>Total Income</p><strong>{money(totals.income)}</strong></article>
         <article className="metric-card card"><TrendingUp size={18}/><p>Total Profit</p><strong>{money(totals.profit)}</strong></article>
-        <article className="metric-card card"><CircleDollarSign size={18}/><p>Estimated Costs</p><strong>{money(totals.costs)}</strong></article>
-        <article className="metric-card card"><Users size={18}/><p>Paid Invoices</p><strong>{paidInvoices.length}</strong></article>
+        <article className="metric-card card"><Users size={18}/><p>Employee Payouts</p><strong>{money(totals.employeePayments)}</strong></article>
+        <article className="metric-card card"><CircleDollarSign size={18}/><p>Company Expenses</p><strong>{money(totals.companyExpenses)}</strong></article>
+        <article className="metric-card card"><TrendingUp size={18}/><p>Company Profit</p><strong>{money(totals.companyProfit)}</strong></article>
       </section>
 
       <section className="card analytics-detail-card">
@@ -88,14 +95,14 @@ export function AnalyticsScreen() {
       </section>
 
       <section className="card analytics-detail-card">
-        <header className="card__header"><h2>Paid Invoice Detail</h2><span>{paidInvoices.length} entries</span></header>
+        <header className="card__header"><h2>Profit Transactions</h2><span>{paidInvoices.length} entries</span></header>
         <div className="table-wrap">
           <table className="data-table plain-data-table analytics-table">
-            <thead><tr><th>Payment Date</th><th>Invoice</th><th>Client</th><th>Income</th><th>Profit</th><th>Open</th></tr></thead>
+            <thead><tr><th>Payment Date</th><th>Invoice</th><th>Client</th><th>Income</th><th>Profit</th><th>Balance</th></tr></thead>
             <tbody>
               {paidInvoices.length ? paidInvoices.map((invoice) => (
                 <tr className="plain-data-row" key={invoice.id}>
-                  <td>{invoice.profitRecordedAt || invoice.paymentDate || invoice.invoiceDate}</td><td><strong>{invoice.id}</strong></td><td>{invoice.companyName}</td><td className="money-cell">{money(invoice.received)}</td><td className="money-cell">{money(invoice.profitAmount || 0)}</td><td><Link className="button" href={`${routes.recordDetail}?type=invoice&id=${encodeURIComponent(invoice.id)}`}>Details</Link></td>
+                  <td>{invoice.profitRecordedAt || invoice.paymentDate || invoice.invoiceDate}</td><td><strong>{invoice.id}</strong></td><td>{invoice.companyName}</td><td className="money-cell">{money(invoice.received)}</td><td className="money-cell">{money(invoice.profitAmount || 0)}</td><td><Link className="button button--primary" href={`${routes.manageProfitBalance}?invoiceId=${encodeURIComponent(invoice.id)}`}>Manage Balance</Link></td>
                 </tr>
               )) : <tr className="empty-row"><td colSpan={6}>No paid invoices in this period.</td></tr>}
             </tbody>

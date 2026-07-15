@@ -11,15 +11,18 @@ import {
     StatusBadge,
 } from "@/presentation/components/ui";
 import { money } from "@/presentation/data/sample-data";
-import { useBusinessData } from "@/presentation/providers/business-data-provider";
+import {
+  useBusinessData,
+  type ProjectStageUndo,
+} from "@/presentation/providers/business-data-provider";
 import {
     collectCompanyNames,
     normalizeCompanyKey,
 } from "@/presentation/utils/company-filters";
 import { Edit3, FileText, Plus, Printer, ReceiptText, Search, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useMemo, useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 function Toolbar({
   query,
@@ -54,6 +57,21 @@ const invoiceStatusOptions: Array<{ label: string; value: Invoice["status"] }> =
     { label: "Received / Paid", value: "paid" },
     { label: "Overdue", value: "overdue" },
   ];
+
+function invoiceVatAmount(invoice: Invoice) {
+  if (Number.isFinite(invoice.vatAmount)) return Math.max(0, invoice.vatAmount || 0);
+  if (invoice.lineItems?.length) {
+    return invoice.lineItems.reduce(
+      (sum, item) => sum + (item.vatAmount ?? (item.amount * item.vatRate) / 100),
+      0,
+    );
+  }
+  if (Number.isFinite(invoice.subTotal)) {
+    return Math.max(0, invoice.amount + (invoice.discountAmount || 0) - (invoice.subTotal || 0));
+  }
+  const rate = invoice.vatRate || 0;
+  return rate > 0 ? (invoice.amount * rate) / (100 + rate) : 0;
+}
 
 export function ClientsScreen() {
   const router = useRouter();
@@ -301,7 +319,13 @@ export function ProjectsScreen({
   billingView?: "all" | "pending-po";
 }) {
   const router = useRouter();
-  const { data, patchRecord, deleteRecord } = useBusinessData();
+  const pathname = usePathname();
+  const { data, transitionProjectStage, undoProjectStage, deleteRecord } = useBusinessData();
+  const [stageError, setStageError] = useState("");
+  const [stageUndo, setStageUndo] = useState<ProjectStageUndo | null>(null);
+  const [changingProjectId, setChangingProjectId] = useState("");
+  const changingProjectIdRef = useRef("");
+  const undoTimerRef = useRef<number | null>(null);
   const [query, setQuery] = useState("");
   const [company, setCompany] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
@@ -345,6 +369,10 @@ export function ProjectsScreen({
         ? "Completed Projects"
         : "Projects";
 
+  useEffect(() => () => {
+    if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
+  }, []);
+
   function linkedQuotation(project: Project) {
     return data.quotations.find(
       (quotation) =>
@@ -354,36 +382,49 @@ export function ProjectsScreen({
   }
 
   async function changeProjectWorkState(project: Project, nextState: string) {
-    if (nextState === "pending-po") {
-      await patchRecord("projects", project.id, {
-        billingStage: "pending-po",
-        workCompleted: false,
-      });
-      return;
+    if (changingProjectIdRef.current) return;
+    changingProjectIdRef.current = project.id;
+    setChangingProjectId(project.id);
+    setStageError("");
+    try {
+      const undo = await transitionProjectStage(
+        project.id,
+        nextState as "pending" | "completed" | "pending-po" | "po-done",
+      );
+      if (!undo) return;
+      setStageUndo(undo);
+      if (undoTimerRef.current) window.clearTimeout(undoTimerRef.current);
+      undoTimerRef.current = window.setTimeout(() => setStageUndo(null), 8000);
+    } catch (caught) {
+      setStageError(caught instanceof Error ? caught.message : "Project stage could not be changed.");
+    } finally {
+      changingProjectIdRef.current = "";
+      setChangingProjectId("");
     }
-    if (nextState === "po-done") {
-      await patchRecord("projects", project.id, {
-        billingStage: "po-done",
-        workCompleted: true,
-        completion: 100,
-      });
-      return;
-    }
+  }
 
-    const workCompleted = nextState === "completed";
-    if (
-      workCompleted === Boolean(project.workCompleted) &&
-      (project.billingStage || "ongoing") === "ongoing"
-    ) return;
-    await patchRecord("projects", project.id, {
-      workCompleted,
-      billingStage: "ongoing",
-      completion: workCompleted
-        ? 100
-        : project.completion === 100
-          ? 0
-          : project.completion,
-    });
+  async function undoLastProjectStage() {
+    if (!stageUndo || changingProjectIdRef.current) return;
+    changingProjectIdRef.current = stageUndo.projectId;
+    setChangingProjectId(stageUndo.projectId);
+    setStageError("");
+    try {
+      await undoProjectStage(stageUndo);
+      const restoredRoute = stageUndo.before.status === "completed"
+        ? routes.completedProjects
+        : ["pending-po", "po-done"].includes(stageUndo.before.billingStage || "")
+          ? routes.pendingPo
+          : stageUndo.before.status === "in-progress"
+            ? routes.ongoingProjects
+            : routes.projects;
+      setStageUndo(null);
+      if (pathname !== restoredRoute) router.push(restoredRoute);
+    } catch (caught) {
+      setStageError(caught instanceof Error ? caught.message : "Project stage could not be restored.");
+    } finally {
+      changingProjectIdRef.current = "";
+      setChangingProjectId("");
+    }
   }
 
   async function deleteProject(project: Project) {
@@ -401,6 +442,15 @@ export function ProjectsScreen({
             : "Plain project list with quick details."
         }
       />
+      {stageError ? <div className="form-message form-message--error" role="alert">{stageError}</div> : null}
+      {stageUndo ? (
+        <div className="project-stage-undo" role="status">
+          <span>Project stage updated.</span>
+          <button type="button" onClick={() => void undoLastProjectStage()} disabled={Boolean(changingProjectId)}>
+            Undo
+          </button>
+        </div>
+      ) : null}
       <section className="card plain-data-card">
         <Toolbar
           query={query}
@@ -481,6 +531,7 @@ export function ProjectsScreen({
                               : "pending"
                         }
                         aria-label={`Change work status for project ${project.id}`}
+                        disabled={changingProjectId === project.id}
                         onChange={(event) => void changeProjectWorkState(project, event.target.value)}
                       >
                         {billingView === "pending-po" ? (
@@ -504,7 +555,7 @@ export function ProjectsScreen({
                             className="button button--primary project-invoice-action"
                             href={
                               invoice
-                                ? `${routes.editInvoice}?id=${encodeURIComponent(invoice.id)}`
+                                ? `${routes.recordDetail}?type=invoice&id=${encodeURIComponent(invoice.id)}`
                                 : `${routes.quotationInvoice}?projectId=${encodeURIComponent(project.id)}`
                             }
                           >
@@ -612,6 +663,27 @@ export function InvoicesScreen({
   // the records currently visible to the user.
   const total = filtered.reduce((sum, item) => sum + item.amount, 0);
   const received = filtered.reduce((sum, item) => sum + item.received, 0);
+  const vatPeriod = useMemo(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+    const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const endDate = [
+      end.getFullYear(),
+      String(end.getMonth() + 1).padStart(2, "0"),
+      String(end.getDate()).padStart(2, "0"),
+    ].join("-");
+    const startDate = [
+      start.getFullYear(),
+      String(start.getMonth() + 1).padStart(2, "0"),
+      "01",
+    ].join("-");
+    const vat = data.invoices.reduce((sum, invoice) => {
+      if (invoice.status === "cancelled") return sum;
+      if (!invoice.invoiceDate || invoice.invoiceDate < startDate || invoice.invoiceDate > endDate) return sum;
+      return sum + invoiceVatAmount(invoice);
+    }, 0);
+    return { startDate, endDate, vat };
+  }, [data.invoices]);
   const title = poOnly
     ? "Pending PO"
     : pendingOnly
@@ -708,6 +780,11 @@ export function InvoicesScreen({
           <p>Outstanding</p>
           <strong>{money(total - received)}</strong>
         </article>
+        <article className="metric-card card invoice-vat-metric">
+          <p>Total VAT · 3 Months</p>
+          <strong>{money(vatPeriod.vat)}</strong>
+          <small>{vatPeriod.startDate} — {vatPeriod.endDate}</small>
+        </article>
       </section>
       <section className="card plain-data-card">
         <Toolbar
@@ -757,6 +834,7 @@ export function InvoicesScreen({
                 <th>Status</th>
                 <th>Due Date</th>
                 <th>Amount</th>
+                <th>VAT</th>
                 <th>Balance Due</th>
                 <th>Actions</th>
               </tr>
@@ -803,6 +881,7 @@ export function InvoicesScreen({
                     </td>
                     <td>{invoice.dueDate || invoice.followUpDate || "-"}</td>
                     <td className="money-cell">{money(invoice.amount)}</td>
+                    <td className="money-cell">{money(invoiceVatAmount(invoice))}</td>
                     <td className="money-cell">
                       {money(invoice.amount - invoice.received)}
                     </td>
@@ -849,7 +928,7 @@ export function InvoicesScreen({
                   </tr>
                 ))
               ) : (
-                <EmptyTableRow columns={9} message="No invoices found." />
+                <EmptyTableRow columns={10} message="No invoices found." />
               )}
             </tbody>
           </table>

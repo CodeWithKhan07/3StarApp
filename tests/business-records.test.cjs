@@ -93,6 +93,40 @@ test("invoice payment status is derived and overpayment is rejected", () => {
   );
 });
 
+test("profit allocations must balance employee, company, and expense shares", () => {
+  const base = {
+    id: "INV-91",
+    companyName: "Client A",
+    project: "Door repair",
+    invoiceDate: "2026-07-14",
+    amount: 115,
+    received: 115,
+    profitAmount: 30,
+    status: "paid",
+    currency: "SAR",
+    subTotal: 100,
+    vatAmount: 15,
+  };
+  const allocation = {
+    employeePayments: [{ id: "employee-1", employeeName: "Employee A", amount: 10 }],
+    companyProfit: 15,
+    companyExpenses: 5,
+    updatedAt: "2026-07-14T12:00:00.000Z",
+  };
+
+  assert.deepEqual(
+    prepareRecordForSave("invoices", { ...base, profitAllocation: allocation }).profitAllocation,
+    allocation,
+  );
+  assert.throws(
+    () => prepareRecordForSave("invoices", {
+      ...base,
+      profitAllocation: { ...allocation, companyProfit: 14 },
+    }),
+    /must equal the invoice profit amount/i,
+  );
+});
+
 // Normalized financial IDs cannot be duplicated by casing or whitespace.
 test("duplicate invoice IDs are case-insensitive", () => {
   const data = emptyData();

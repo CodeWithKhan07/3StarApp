@@ -685,6 +685,8 @@ export function QuotationsScreen() {
     quotation: ReturnType<typeof normalizeQuotation>,
     nextStatus: string,
   ) {
+    if (quotation.status === "approved") return;
+
     setFormError("");
     try {
       await updateQuotationStatus(quotation.id, nextStatus as QuotationStatus);
@@ -1459,7 +1461,10 @@ export function QuotationsScreen() {
                         <span>Status</span>
                         <select
                           value={quotation.status}
-                          aria-label={`Change status for quotation ${quotation.id}`}
+                          disabled={quotation.status === "approved"}
+                          aria-label={quotation.status === "approved"
+                            ? `Approved status for quotation ${quotation.id} is read-only`
+                            : `Change status for quotation ${quotation.id}`}
                           onChange={(event) => void handleStatusChange(quotation, event.target.value)}
                         >
                           {statusOptions.map((item) => (
@@ -1597,7 +1602,10 @@ export function QuotationsScreen() {
                     <span>Status</span>
                     <select
                       className="inline-select"
-                      aria-label={`Change status for quotation ${quotation.id}`}
+                      disabled={quotation.status === "approved"}
+                      aria-label={quotation.status === "approved"
+                        ? `Approved status for quotation ${quotation.id} is read-only`
+                        : `Change status for quotation ${quotation.id}`}
                       value={quotation.status}
                       onChange={(event) =>
                         void handleStatusChange(quotation, event.target.value)
@@ -1765,7 +1773,10 @@ export function QuotationsScreen() {
                       <td>
                         <select
                           className="inline-select status-inline-select"
-                          aria-label={`Change status for quotation ${quotation.id}`}
+                          disabled={quotation.status === "approved"}
+                          aria-label={quotation.status === "approved"
+                            ? `Approved status for quotation ${quotation.id} is read-only`
+                            : `Change status for quotation ${quotation.id}`}
                           value={isEditing ? draft.status : quotation.status}
                           onClick={(event) => event.stopPropagation()}
                           onChange={(event) => {
@@ -1975,7 +1986,10 @@ export function QuotationsScreen() {
                           <span>Status</span>
                           <select
                             className="inline-select mobile-status-select"
-                            aria-label={`Change status for quotation ${quotation.id}`}
+                            disabled={quotation.status === "approved"}
+                            aria-label={quotation.status === "approved"
+                              ? `Approved status for quotation ${quotation.id} is read-only`
+                              : `Change status for quotation ${quotation.id}`}
                             value={quotation.status}
                             onChange={(event) =>
                               void handleStatusChange(

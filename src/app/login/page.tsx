@@ -31,7 +31,8 @@ export default function LoginPage() {
     setLoading(true); setMessage(""); setSuccess(false);
     try {
       await new SignInUseCase(repository).execute(email, password);
-      router.replace(routes.dashboard);
+      // The auth-state observer owns navigation. Moving before it publishes
+      // the signed-in user can make AuthGuard send a valid session back here.
     } catch (error) {
       setMessage(toUserMessage(error));
     } finally {

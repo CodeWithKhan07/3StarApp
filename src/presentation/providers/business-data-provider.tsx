@@ -33,6 +33,17 @@ import {
 } from "react";
 
 type SyncState = "synced" | "syncing" | "offline" | "error";
+type ProjectWorkState = "pending" | "completed" | "pending-po" | "po-done";
+type ProjectStageSnapshot = Pick<
+  EntityMap["projects"],
+  "status" | "billingStage" | "workCompleted" | "completion" | "actualCompletion"
+>;
+
+export interface ProjectStageUndo {
+  projectId: string;
+  before: ProjectStageSnapshot;
+  after: ProjectStageSnapshot;
+}
 
 interface BusinessDataContextValue {
   data: BusinessDataSet;
@@ -88,6 +99,13 @@ interface BusinessDataContextValue {
       ? TStatus
       : string,
   ) => Promise<void>;
+
+  transitionProjectStage: (
+    id: string,
+    nextState: ProjectWorkState,
+  ) => Promise<ProjectStageUndo | null>;
+
+  undoProjectStage: (undo: ProjectStageUndo) => Promise<void>;
 
   updateQuotationStatus: (
     id: string,
@@ -1027,6 +1045,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
           received: invoice.amount,
           profitAmount,
           profitRecordedAt: paymentDate,
+          profitAllocation: undefined,
           status: "paid",
           paymentDate,
         });
@@ -1091,6 +1110,9 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
           recordIdsEqual("quotations", item.id, id),
         );
         if (!quotation) throw new Error("Quotation not found.");
+        if (quotation.status === "approved" && status !== "approved") {
+          throw new Error("Approved quotation status is read-only.");
+        }
 
         const projectId =
           quotation.linkedProjectId ||
@@ -1124,6 +1146,122 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
             recordIdsEqual("quotations", item.id, id) ? updatedQuotation : item,
           ),
           projects: project ? [project, ...current.projects] : current.projects,
+        };
+      });
+    },
+    [commitMutation],
+  );
+
+  const transitionProjectStage = useCallback(
+    async (id: string, nextState: ProjectWorkState) => {
+      let undo: ProjectStageUndo | null = null;
+
+      commitMutation("project-stage", (current) => {
+        const project = current.projects.find((item) =>
+          recordIdsEqual("projects", item.id, id),
+        );
+        if (!project) throw new Error("Project not found.");
+
+        const linkedInvoice = current.invoices.find(
+          (invoice) => invoice.linkedProjectId === project.id,
+        );
+        if (linkedInvoice?.status === "paid" && nextState !== "completed") {
+          throw new Error(
+            "This project was completed by a paid invoice. Reverse the payment before moving the project back.",
+          );
+        }
+
+        const before: ProjectStageSnapshot = {
+          status: project.status,
+          billingStage: project.billingStage,
+          workCompleted: project.workCompleted,
+          completion: project.completion,
+          actualCompletion: project.actualCompletion,
+        };
+        const patch: ProjectStageSnapshot =
+          nextState === "pending-po"
+            ? {
+                ...before,
+                status: "in-progress",
+                billingStage: "pending-po",
+                workCompleted: false,
+              }
+            : nextState === "po-done"
+              ? {
+                  ...before,
+                  status: "in-progress",
+                  billingStage: "po-done",
+                  workCompleted: true,
+                  completion: 100,
+                }
+              : nextState === "completed"
+                ? {
+                    ...before,
+                    billingStage: "ongoing",
+                    workCompleted: true,
+                    completion: 100,
+                  }
+                : {
+                    ...before,
+                    status: "in-progress",
+                    billingStage: "ongoing",
+                    workCompleted: false,
+                    completion: project.completion === 100 ? 0 : project.completion,
+                    actualCompletion: undefined,
+                  };
+
+        const changed = (Object.keys(patch) as Array<keyof ProjectStageSnapshot>)
+          .some((key) => patch[key] !== before[key]);
+        if (!changed) return current;
+
+        const updated = prepareRecordForSave("projects", { ...project, ...patch });
+        const after: ProjectStageSnapshot = {
+          status: updated.status,
+          billingStage: updated.billingStage,
+          workCompleted: updated.workCompleted,
+          completion: updated.completion,
+          actualCompletion: updated.actualCompletion,
+        };
+        undo = { projectId: project.id, before, after };
+
+        return {
+          ...current,
+          projects: current.projects.map((item) =>
+            recordIdsEqual("projects", item.id, id) ? updated : item,
+          ),
+        };
+      });
+
+      return undo;
+    },
+    [commitMutation],
+  );
+
+  const undoProjectStage = useCallback(
+    async (undo: ProjectStageUndo) => {
+      commitMutation("project-stage-undo", (current) => {
+        const project = current.projects.find((item) =>
+          recordIdsEqual("projects", item.id, undo.projectId),
+        );
+        if (!project) throw new Error("Project not found.");
+
+        const unchanged = (Object.keys(undo.after) as Array<keyof ProjectStageSnapshot>)
+          .every((key) => project[key] === undo.after[key]);
+        if (!unchanged) {
+          throw new Error(
+            "Undo was not applied because this project has a newer stage change.",
+          );
+        }
+
+        const restored = prepareRecordForSave("projects", {
+          ...project,
+          ...undo.before,
+        });
+        return {
+          ...current,
+          projects: current.projects.map((item) =>
+            recordIdsEqual("projects", item.id, undo.projectId) ? restored : item,
+          ),
         };
       });
     },
@@ -1181,6 +1319,8 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       completeInvoicePayment,
 
       updateProjectStatus,
+      transitionProjectStage,
+      undoProjectStage,
       updateQuotationStatus,
       updateInvoiceStatus,
       updateInvoicePayment,
@@ -1208,6 +1348,8 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       updateInvoiceStatus,
       updateProject,
       updateProjectStatus,
+      transitionProjectStage,
+      undoProjectStage,
       updateQuotationStatus,
       updateRecord,
     ],

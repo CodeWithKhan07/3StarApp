@@ -134,6 +134,16 @@ export interface Invoice {
   received: number;
   profitAmount?: number;
   profitRecordedAt?: string;
+  profitAllocation?: {
+    employeePayments: Array<{
+      id: string;
+      employeeName: string;
+      amount: number;
+    }>;
+    companyProfit: number;
+    companyExpenses: number;
+    updatedAt: string;
+  };
   paymentDate?: string;
   paymentMode?: string;
   status: PaymentStatus;

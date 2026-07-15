@@ -104,6 +104,22 @@ export function InvoiceDocumentForm({
     );
   }
 
+  function addInvoiceItem() {
+    setLineItems((items) => [
+      ...items,
+      {
+        id: String(items.length + 1),
+        description: "",
+        quantity: 0,
+        unitCode: "",
+        unitPrice: 0,
+        amount: 0,
+        vatRate: data.company.vatRate,
+        vatAmount: 0,
+      },
+    ]);
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -413,7 +429,20 @@ export function InvoiceDocumentForm({
             </label>
           </div>
 
-          <div className="table-wrap">
+          <div className="quotation-items-toolbar invoice-items-toolbar">
+            <div>
+              <strong>Invoice Items</strong>
+              <span>
+                {lineItems.length} item{lineItems.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <button className="button" type="button" onClick={addInvoiceItem}>
+              <Plus size={14} />
+              Add Item
+            </button>
+          </div>
+
+          <div className="table-wrap quotation-items-table-wrap">
             <table className="data-table project-line-items">
               <thead>
                 <tr>
@@ -528,31 +557,6 @@ export function InvoiceDocumentForm({
               </tbody>
             </table>
           </div>
-          <div className="invoice-line-actions">
-            <button
-              className="button button--primary invoice-add-item"
-              type="button"
-              onClick={() =>
-                setLineItems((items) => [
-                  ...items,
-                  {
-                    id: String(items.length + 1),
-                    description: "",
-                    quantity: 0,
-                    unitCode: "",
-                    unitPrice: 0,
-                    amount: 0,
-                    vatRate: data.company.vatRate,
-                    vatAmount: 0,
-                  },
-                ])
-              }
-            >
-              <Plus size={18} />
-              Add Item
-            </button>
-          </div>
-
           {draft?.lineItems.length ? (
             <div className="import-line-summary">
               <strong>

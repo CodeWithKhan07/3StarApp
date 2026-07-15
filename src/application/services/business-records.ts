@@ -306,6 +306,29 @@ function normalizeInvoice(invoice: Invoice): Invoice {
   const received = roundMoney(finiteNumber(invoice.received, "Amount received"));
   if (received > amount) throw new Error("Amount received cannot exceed the invoice total.");
 
+  const profitAllocation = invoice.profitAllocation
+    ? {
+        employeePayments: invoice.profitAllocation.employeePayments.map((payment, index) => ({
+          id: required(payment.id, `Employee payment ${index + 1} id`),
+          employeeName: required(payment.employeeName, `Employee payment ${index + 1} name`),
+          amount: roundMoney(finiteNumber(payment.amount, `Employee payment ${index + 1} amount`)),
+        })),
+        companyProfit: roundMoney(finiteNumber(invoice.profitAllocation.companyProfit, "Company profit")),
+        companyExpenses: roundMoney(finiteNumber(invoice.profitAllocation.companyExpenses, "Company expenses")),
+        updatedAt: required(invoice.profitAllocation.updatedAt, "Profit allocation update date"),
+      }
+    : undefined;
+  if (profitAllocation) {
+    const allocated = roundMoney(
+      profitAllocation.employeePayments.reduce((sum, payment) => sum + payment.amount, 0) +
+      profitAllocation.companyProfit +
+      profitAllocation.companyExpenses,
+    );
+    if (allocated !== roundMoney(invoice.profitAmount ?? 0)) {
+      throw new Error("Profit allocations must equal the invoice profit amount.");
+    }
+  }
+
   // Payment status is derived unless the record is intentionally waiting for
   // a PO or cancelled, preventing paid invoices with an outstanding balance.
   let status = invoice.status;
@@ -336,6 +359,7 @@ function normalizeInvoice(invoice: Invoice): Invoice {
     discountAmount,
     amount,
     received,
+    profitAllocation,
     status,
   };
 }
