@@ -30,7 +30,9 @@ import {
     FileUp,
     LoaderCircle,
     Plus,
+    Printer,
     Search,
+    SlidersHorizontal,
     Trash2,
     X,
 } from "lucide-react";
@@ -243,6 +245,7 @@ export function QuotationsScreen() {
   const [minAmount, setMinAmount] = useState("");
   const [maxAmount, setMaxAmount] = useState("");
   const [sortBy, setSortBy] = useState("newest");
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   const [showForm, setShowForm] = useState(false);
   const [formError, setFormError] = useState("");
@@ -682,6 +685,8 @@ export function QuotationsScreen() {
     quotation: ReturnType<typeof normalizeQuotation>,
     nextStatus: string,
   ) {
+    if (quotation.status === "approved") return;
+
     setFormError("");
     try {
       await updateQuotationStatus(quotation.id, nextStatus as QuotationStatus);
@@ -728,11 +733,23 @@ export function QuotationsScreen() {
 
   return (
     <>
-      <PageHeader
+      <div className="quotation-desktop-only">
+        <PageHeader
         title="Quotations"
         description={`Track quotations from submission to approval, then push them straight to invoicing. Cloud: ${syncState}.`}
         actions={
           <>
+            {showForm ? (
+              <button
+                className="button button--primary"
+                type="submit"
+                form="quotation-create-form"
+                disabled={submitting}
+              >
+                <Check size={14} />
+                {submitting ? "Saving..." : "Save Quotation"}
+              </button>
+            ) : null}
             <button
               className="button"
               type="button"
@@ -764,7 +781,54 @@ export function QuotationsScreen() {
             </button>
           </>
         }
-      />
+        />
+      </div>
+
+      <section className="quotation-mobile-only mobile-quotation-hero">
+        <div className="mobile-quotation-hero__copy">
+          <span className="mobile-quotation-eyebrow">Sales workspace</span>
+          <h1>Quotations</h1>
+          <p>{quotations.length} total · Cloud {syncState}</p>
+        </div>
+        <div className="mobile-quotation-hero__actions">
+          {showForm ? (
+            <button
+              className="button button--primary"
+              type="submit"
+              form="quotation-create-form"
+              disabled={submitting}
+            >
+              <Check size={18} />
+              {submitting ? "Saving..." : "Save"}
+            </button>
+          ) : null}
+          <button
+            className="button"
+            type="button"
+            disabled={importing}
+            onClick={() => fileInputRef.current?.click()}
+          >
+            {importing ? <LoaderCircle className="spin" size={18} /> : <FileUp size={18} />}
+            Import
+          </button>
+          <button
+            className="button button--primary"
+            type="button"
+            onClick={() => {
+              setImportDraft(null);
+              resetQuotationClientFields();
+              setShowSqm(false);
+              setVatRate(numberToInputText(data.company.vatRate) || "15");
+              setLineItems([emptyLineItem(1)]);
+              setFormError("");
+              setShowForm((value) => !value);
+            }}
+          >
+            <Plus size={18} />
+            New quote
+          </button>
+        </div>
+      </section>
 
       <input
         ref={fileInputRef}
@@ -784,6 +848,7 @@ export function QuotationsScreen() {
 
       {showForm ? (
         <form
+          id="quotation-create-form"
           key={importDraft?.remarks || "manual"}
           className="card form-card"
           onSubmit={handleCreate}
@@ -866,12 +931,17 @@ export function QuotationsScreen() {
               <span>Store / Branch</span>
               <input
                 name="store"
-                placeholder="Store or branch"
+                placeholder="Enter the store or branch for this quotation"
                 value={quotationStore}
                 onChange={(event) => setQuotationStore(event.target.value)}
-                readOnly={clientSource === "saved" && Boolean(quotationStore)}
                 required
               />
+              {clientSource === "saved" ? (
+                <small>
+                  The saved client&apos;s default is prefilled. You can replace it
+                  with any store or branch for this quotation.
+                </small>
+              ) : null}
             </label>
 
             {clientSource === "new" ? (
@@ -971,7 +1041,29 @@ export function QuotationsScreen() {
             </label>
           </div>
 
-          <div className="table-wrap">
+          <div className="quotation-items-toolbar">
+            <div>
+              <strong>Quotation Items</strong>
+              <span>
+                {lineItems.length} item{lineItems.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <button
+              className="button"
+              type="button"
+              onClick={() =>
+                setLineItems((items) => [
+                  ...items,
+                  emptyLineItem(items.length + 1),
+                ])
+              }
+            >
+              <Plus size={14} />
+              Add Item
+            </button>
+          </div>
+
+          <div className="table-wrap quotation-items-table-wrap">
             <table className="data-table project-line-items">
               <thead>
                 <tr>
@@ -1083,19 +1175,6 @@ export function QuotationsScreen() {
               {moneyOrEmpty(quotationTotals.vatAmount) || "—"} · Total:{" "}
               {moneyOrEmpty(quotationTotals.total) || "—"}
             </span>
-            <button
-              className="button"
-              type="button"
-              onClick={() =>
-                setLineItems((items) => [
-                  ...items,
-                  emptyLineItem(items.length + 1),
-                ])
-              }
-            >
-              <Plus size={14} />
-              Add Item
-            </button>
           </div>
 
           {formError ? (
@@ -1127,7 +1206,7 @@ export function QuotationsScreen() {
         </form>
       ) : null}
 
-      <section className="projects-overview-grid">
+      <section className="projects-overview-grid quotation-desktop-only">
         {stats.map((item) => (
           <article className="project-stat-card card" key={item.label}>
             <div>
@@ -1138,7 +1217,7 @@ export function QuotationsScreen() {
         ))}
       </section>
 
-      <section className="card quotation-filter-panel">
+      <section className="card quotation-filter-panel quotation-desktop-only">
         <label className="toolbar-search quotation-search">
           <Search size={17} />
           <input
@@ -1246,7 +1325,349 @@ export function QuotationsScreen() {
         </button>
       </section>
 
-      <section className="card projects-table-card quotations-company-workspace">
+      <div className="quotation-mobile-only mobile-quotation-workspace">
+        <div className="mobile-quotation-stats" aria-label="Quotation summary">
+          {stats.map((item) => (
+            <article key={item.label}>
+              <span>{item.label}</span>
+              <strong>{item.value}</strong>
+            </article>
+          ))}
+        </div>
+
+        <section className="mobile-quotation-tools">
+          <div className="mobile-quotation-search-row">
+            <label className="mobile-quotation-search">
+              <Search size={19} />
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search quotations"
+                aria-label="Search quotations"
+              />
+            </label>
+            <button
+              className={`mobile-filter-toggle${mobileFiltersOpen ? " is-active" : ""}`}
+              type="button"
+              aria-expanded={mobileFiltersOpen}
+              aria-controls="mobile-quotation-filters"
+              onClick={() => setMobileFiltersOpen((open) => !open)}
+            >
+              <SlidersHorizontal size={19} />
+              Filters
+            </button>
+          </div>
+
+          {mobileFiltersOpen ? (
+            <div className="mobile-quotation-filters" id="mobile-quotation-filters">
+              <label>
+                <span>Status</span>
+                <select value={status} onChange={(event) => setStatus(event.target.value)}>
+                  <option value="all">All statuses</option>
+                  {statusOptions.map((item) => (
+                    <option key={item.value} value={item.value}>{item.label}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>Company</span>
+                <select value={company} onChange={(event) => setCompany(event.target.value)}>
+                  <option value="all">All companies</option>
+                  {companyOptions.map((name) => (
+                    <option key={name} value={normalizeCompanyKey(name)}>{name}</option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span>From</span>
+                <input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+              </label>
+              <label>
+                <span>To</span>
+                <input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+              </label>
+              <label>
+                <span>Minimum</span>
+                <input inputMode="decimal" value={minAmount} onChange={(event) => setMinAmount(normalizeDecimalInput(event.target.value))} placeholder="SAR 0" />
+              </label>
+              <label>
+                <span>Maximum</span>
+                <input inputMode="decimal" value={maxAmount} onChange={(event) => setMaxAmount(normalizeDecimalInput(event.target.value))} placeholder="Any" />
+              </label>
+              <label className="mobile-filter-wide">
+                <span>Sort by</span>
+                <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+                  <option value="newest">Newest first</option>
+                  <option value="oldest">Oldest first</option>
+                  <option value="price-high">Highest value</option>
+                  <option value="price-low">Lowest value</option>
+                  <option value="company">Company A-Z</option>
+                </select>
+              </label>
+              <button
+                className="button mobile-filter-wide"
+                type="button"
+                onClick={() => {
+                  setQuery("");
+                  setStatus("all");
+                  setCompany("all");
+                  setDateFrom("");
+                  setDateTo("");
+                  setMinAmount("");
+                  setMaxAmount("");
+                  setSortBy("newest");
+                }}
+              >
+                Clear all filters
+              </button>
+            </div>
+          ) : null}
+        </section>
+
+        <section className="mobile-quotation-results">
+          <header>
+            <div>
+              <span>Quotation tracker</span>
+              <h2>{filteredQuotations.length} quote{filteredQuotations.length === 1 ? "" : "s"}</h2>
+            </div>
+            <small>{sortBy === "newest" ? "Newest first" : "Filtered view"}</small>
+          </header>
+
+          {filteredQuotations.length ? (
+            <div className="mobile-quotation-card-list">
+              {filteredQuotations.map((quotation) => {
+                const hasInvoice = data.invoices.some(
+                  (invoice) =>
+                    invoice.quotationSerialNumber === quotation.serialNumber ||
+                    (!invoice.quotationSerialNumber && invoice.quotationNo === quotation.id),
+                );
+
+                return (
+                  <article
+                    className="mobile-quotation-card"
+                    key={quotation.id}
+                    onClick={(event) => {
+                      if ((event.target as HTMLElement).closest("a, button, select")) return;
+                      router.push(`${routes.recordDetail}?type=quotation&id=${encodeURIComponent(quotation.id)}`);
+                    }}
+                  >
+                    <header>
+                      <div>
+                        <span>{quotation.id}</span>
+                        <strong>{quotation.companyName || "Unnamed customer"}</strong>
+                        <small>{quotation.serialNumber}</small>
+                      </div>
+                      <label className="mobile-quotation-status">
+                        <span>Status</span>
+                        <select
+                          value={quotation.status}
+                          disabled={quotation.status === "approved"}
+                          aria-label={quotation.status === "approved"
+                            ? `Approved status for quotation ${quotation.id} is read-only`
+                            : `Change status for quotation ${quotation.id}`}
+                          onChange={(event) => void handleStatusChange(quotation, event.target.value)}
+                        >
+                          {statusOptions.map((item) => (
+                            <option key={item.value} value={item.value}>{item.label}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </header>
+
+                    <div className="mobile-quotation-card__value">
+                      <span>Total value</span>
+                      <strong>{money(quotation.amount)}</strong>
+                    </div>
+
+                    <dl>
+                      <div><dt>Date</dt><dd>{quotation.issueDate || "—"}</dd></div>
+                      <div><dt>Branch</dt><dd>{quotation.store || "—"}</dd></div>
+                      <div><dt>Invoice</dt><dd>{hasInvoice ? "Created" : "Not created"}</dd></div>
+                    </dl>
+
+                    <footer>
+                      <button type="button" onClick={() => void handleExport(quotation)}>
+                        <Printer size={18} /><span>Print</span>
+                      </button>
+                      <Link href={`${routes.quotationInvoice}?serial=${encodeURIComponent(quotation.serialNumber)}`}>
+                        <FileUp size={18} /><span>Invoice</span>
+                      </Link>
+                      <Link href={`${routes.editQuotation}?id=${encodeURIComponent(quotation.id)}`}>
+                        <Edit3 size={18} /><span>Edit</span>
+                      </Link>
+                      <button className="is-danger" type="button" onClick={() => void handleDelete(quotation)}>
+                        <Trash2 size={18} /><span>Delete</span>
+                      </button>
+                    </footer>
+                  </article>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="mobile-quotation-empty">
+              <strong>No quotations found</strong>
+              <span>Adjust your filters or create a new quotation.</span>
+            </div>
+          )}
+        </section>
+      </div>
+
+      <section className="card quotation-tracker-v2 quotation-desktop-only">
+        <header className="quotation-tracker-v2__header">
+          <div>
+            <h2>Quotation Tracker</h2>
+            <p>
+              Showing {filteredQuotations.length} of {quotations.length} quotations.
+            </p>
+          </div>
+        </header>
+
+        {formError ? (
+          <div className="form-message form-message--error">{formError}</div>
+        ) : null}
+
+        {filteredQuotations.length ? (
+          <div className="quotation-record-list" role="list">
+            <div className="quotation-record-list__head" aria-hidden="true">
+              <span>Quotation</span>
+              <span>Date</span>
+              <span>Customer</span>
+              <span>Store / Branch</span>
+              <span>Amount</span>
+              <span>Status</span>
+              <span>Actions</span>
+            </div>
+
+            {filteredQuotations.map((quotation) => {
+              const hasInvoice = data.invoices.some(
+                (invoice) =>
+                  invoice.quotationSerialNumber === quotation.serialNumber ||
+                  (!invoice.quotationSerialNumber &&
+                    invoice.quotationNo === quotation.id),
+              );
+
+              return (
+                <article
+                  className="quotation-record-row"
+                  key={quotation.id}
+                  role="listitem"
+                  tabIndex={0}
+                  onClick={(event) => {
+                    if (
+                      (event.target as HTMLElement).closest(
+                        "a, button, input, select, textarea",
+                      )
+                    ) {
+                      return;
+                    }
+                    router.push(
+                      `${routes.recordDetail}?type=quotation&id=${encodeURIComponent(quotation.id)}`,
+                    );
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return;
+                    event.preventDefault();
+                    router.push(
+                      `${routes.recordDetail}?type=quotation&id=${encodeURIComponent(quotation.id)}`,
+                    );
+                  }}
+                >
+                  <div className="quotation-record-field quotation-record-identity">
+                    <span>Quotation</span>
+                    <strong>{quotation.id}</strong>
+                    <small>{quotation.serialNumber}</small>
+                  </div>
+
+                  <div className="quotation-record-field">
+                    <span>Date</span>
+                    <strong>{quotation.issueDate || "—"}</strong>
+                  </div>
+
+                  <div className="quotation-record-field">
+                    <span>Customer</span>
+                    <strong>{quotation.companyName || "Unnamed customer"}</strong>
+                  </div>
+
+                  <div className="quotation-record-field">
+                    <span>Store / Branch</span>
+                    <strong>{quotation.store || "—"}</strong>
+                  </div>
+
+                  <div className="quotation-record-field quotation-record-amount">
+                    <span>Amount</span>
+                    <strong>{money(quotation.amount)}</strong>
+                  </div>
+
+                  <div className="quotation-record-field quotation-record-status">
+                    <span>Status</span>
+                    <select
+                      className="inline-select"
+                      disabled={quotation.status === "approved"}
+                      aria-label={quotation.status === "approved"
+                        ? `Approved status for quotation ${quotation.id} is read-only`
+                        : `Change status for quotation ${quotation.id}`}
+                      value={quotation.status}
+                      onChange={(event) =>
+                        void handleStatusChange(quotation, event.target.value)
+                      }
+                    >
+                      {statusOptions.map((item) => (
+                        <option key={item.value} value={item.value}>
+                          {item.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="quotation-record-actions">
+                    <button
+                      className="icon-button"
+                      type="button"
+                      onClick={() => void handleExport(quotation)}
+                      title="Print quotation"
+                      aria-label={`Print quotation ${quotation.id}`}
+                    >
+                      <Printer size={17} />
+                    </button>
+                    <Link
+                      className="icon-button"
+                      href={`${routes.quotationInvoice}?serial=${encodeURIComponent(quotation.serialNumber)}`}
+                      title={hasInvoice ? "View or edit invoice" : "Create invoice"}
+                      aria-label={hasInvoice ? `Open invoice for ${quotation.id}` : `Create invoice for ${quotation.id}`}
+                    >
+                      <FileUp size={17} />
+                    </Link>
+                    <Link
+                      className="icon-button"
+                      href={`${routes.editQuotation}?id=${encodeURIComponent(quotation.id)}`}
+                      title="Edit quotation"
+                      aria-label={`Edit quotation ${quotation.id}`}
+                    >
+                      <Edit3 size={17} />
+                    </Link>
+                    <button
+                      className="icon-button icon-button--danger"
+                      type="button"
+                      onClick={() => void handleDelete(quotation)}
+                      title="Delete quotation"
+                      aria-label={`Delete quotation ${quotation.id}`}
+                    >
+                      <Trash2 size={17} />
+                    </button>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="quotation-record-empty">
+            <strong>No quotations match the current filters.</strong>
+            <span>Clear the filters or create a new quotation.</span>
+          </div>
+        )}
+      </section>
+
+      <section className="quotation-legacy-tracker" aria-hidden="true">
         <div className="projects-table-header">
           <div>
             <h2>Quotation Tracker</h2>
@@ -1352,7 +1773,12 @@ export function QuotationsScreen() {
                       <td>
                         <select
                           className="inline-select status-inline-select"
+                          disabled={quotation.status === "approved"}
+                          aria-label={quotation.status === "approved"
+                            ? `Approved status for quotation ${quotation.id} is read-only`
+                            : `Change status for quotation ${quotation.id}`}
                           value={isEditing ? draft.status : quotation.status}
+                          onClick={(event) => event.stopPropagation()}
                           onChange={(event) => {
                             if (isEditing) {
                               updateDraft(
@@ -1560,6 +1986,10 @@ export function QuotationsScreen() {
                           <span>Status</span>
                           <select
                             className="inline-select mobile-status-select"
+                            disabled={quotation.status === "approved"}
+                            aria-label={quotation.status === "approved"
+                              ? `Approved status for quotation ${quotation.id} is read-only`
+                              : `Change status for quotation ${quotation.id}`}
                             value={quotation.status}
                             onChange={(event) =>
                               void handleStatusChange(

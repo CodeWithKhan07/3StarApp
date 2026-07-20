@@ -1,5 +1,11 @@
 export type RecordStatus = "active" | "pending" | "inactive";
 export type ProjectStatus = "upcoming" | "in-progress" | "on-hold" | "completed" | "cancelled";
+export type ProjectBillingStage =
+  | "ongoing"
+  | "pending-po"
+  | "po-done"
+  | "payment-pending"
+  | "completed";
 export type QuotationStatus = "draft" | "sent" | "approved" | "rejected" | "expired";
 export type PaymentStatus = "pending" | "partial" | "po" | "paid" | "overdue" | "cancelled";
 
@@ -35,6 +41,8 @@ export interface Project {
   expectedCompletion: string;
   actualCompletion?: string;
   completion: number;
+  workCompleted?: boolean;
+  billingStage?: ProjectBillingStage;
   status: ProjectStatus;
   priority: "low" | "medium" | "high" | "urgent";
   remarks?: string;
@@ -114,6 +122,7 @@ export interface Quotation {
 
 export interface Invoice {
   id: string;
+  linkedProjectId?: string;
   companyName: string;
   project: string;
   quotationNo?: string;
@@ -123,6 +132,18 @@ export interface Invoice {
   paymentTerms?: string;
   amount: number;
   received: number;
+  profitAmount?: number;
+  profitRecordedAt?: string;
+  profitAllocation?: {
+    employeePayments: Array<{
+      id: string;
+      employeeName: string;
+      amount: number;
+    }>;
+    companyProfit: number;
+    companyExpenses: number;
+    updatedAt: string;
+  };
   paymentDate?: string;
   paymentMode?: string;
   status: PaymentStatus;

@@ -18,7 +18,6 @@ import { useBusinessData } from "@/presentation/providers/business-data-provider
 import {
   ArrowLeft,
   Download,
-  Edit3,
   ExternalLink,
   FilePlus2,
   FileUp,
@@ -161,11 +160,16 @@ function createImportedLineItems(
 }
 
 export function QuotationInvoiceScreen() {
-  const serial = useSearchParams().get("serial") || "";
+  const searchParams = useSearchParams();
+  const serial = searchParams.get("serial") || "";
+  const projectId = searchParams.get("projectId") || "";
   const { data, createRecord } = useBusinessData();
 
   const quotation = data.quotations.find(
-    (item) => item.serialNumber === serial || item.id === serial,
+    (item) =>
+      (projectId && item.linkedProjectId === projectId) ||
+      item.serialNumber === serial ||
+      item.id === serial,
   );
 
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -216,6 +220,7 @@ export function QuotationInvoiceScreen() {
   }
 
   const quotationId = quotation.id;
+  const quotationLinkedProjectId = quotation.linkedProjectId;
   const quotationSerialNumber = quotation.serialNumber ?? quotation.id;
   const quotationCompanyName = quotation.companyName;
   const quotationStore = quotation.store ?? "";
@@ -244,6 +249,22 @@ export function QuotationInvoiceScreen() {
         return next;
       });
     });
+  }
+
+  function addInvoiceItem() {
+    setLineItems((items) => [
+      ...(items.length ? items : activeLineItems),
+      {
+        id: String(activeLineItems.length + 1),
+        description: "",
+        quantity: 0,
+        unitCode: "",
+        unitPrice: 0,
+        amount: 0,
+        vatRate: data.company.vatRate,
+        vatAmount: 0,
+      },
+    ]);
   }
 
   async function readFile(selected?: File) {
@@ -321,6 +342,7 @@ export function QuotationInvoiceScreen() {
 
       const record: Invoice = {
         id: invoiceId,
+        linkedProjectId: quotationLinkedProjectId,
         companyName: formValue(form, "companyName") || quotationCompanyName,
         project:
           formValue(form, "project") || quotationStore || quotationScopeOfWork,
@@ -406,10 +428,30 @@ export function QuotationInvoiceScreen() {
         title={invoice ? "Quotation Invoice" : "Create Invoice"}
         description={`${quotationCompanyName} · ${quotationId} · Serial ${quotationSerialNumber}`}
         actions={
-          <Link className="button" href={routes.quotations}>
-            <ArrowLeft size={14} />
-            Back to Quotations
-          </Link>
+          <>
+            {!invoice ? (
+              <button
+                className="button button--primary"
+                type="submit"
+                form="quotation-invoice-form"
+                disabled={saving}
+              >
+                <Save size={14} />
+                {saving ? "Saving..." : "Save Invoice"}
+              </button>
+            ) : null}
+            <Link className="button" href={routes.quotations}>
+              <ArrowLeft size={14} />
+              Back to Quotations
+            </Link>
+            <Link
+              className="button button--primary"
+              href={`${routes.recordDetail}?type=quotation&id=${encodeURIComponent(quotationId)}`}
+            >
+              <ExternalLink size={14} />
+              Open Quotation
+            </Link>
+          </>
         }
       />
 
@@ -496,16 +538,16 @@ export function QuotationInvoiceScreen() {
             ) : null}
             <Link
               className="button button--primary"
-              href={`${routes.editInvoice}?id=${encodeURIComponent(invoice.id)}`}
+              href={`${routes.recordDetail}?type=invoice&id=${encodeURIComponent(invoice.id)}`}
             >
-              <Edit3 size={14} />
-              Edit Invoice
+              <ExternalLink size={14} />
+              View Invoice Details
             </Link>
           </div>
         </section>
       ) : (
-        <form className="record-form" onSubmit={save}>
-          <section className="card form-section">
+        <form id="quotation-invoice-form" className="record-form" onSubmit={save}>
+          <section className="card form-section invoice-source-section">
             <header>
               <div>
                 <h2>Invoice Source</h2>
@@ -588,7 +630,7 @@ export function QuotationInvoiceScreen() {
             ) : null}
           </section>
 
-          <section className="card form-section">
+          <section className="card form-section invoice-details-section">
             <header>
               <div>
                 <h2>
@@ -819,106 +861,62 @@ export function QuotationInvoiceScreen() {
             </div>
           </section>
 
-          <section className="card form-section">
+          <section className="card form-section invoice-items-section">
             <header>
               <div>
                 <h2>Invoice Items</h2>
-                <p>
-                  Each item is editable. On mobile, every line is displayed as
-                  its own compact card.
-                </p>
+                <p>Edit quantities and pricing in one focused list.</p>
               </div>
             </header>
 
-            <div className="invoice-line-card-list">
+            <div className="quotation-items-toolbar invoice-items-toolbar invoice-card-items-toolbar">
+              <div>
+                <strong>Invoice Items</strong>
+                <span>
+                  {activeLineItems.length} item
+                  {activeLineItems.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <button className="button" type="button" onClick={addInvoiceItem}>
+                <Plus size={14} />
+                Add Item
+              </button>
+            </div>
+
+            <div className="invoice-item-list">
+              <div className="invoice-item-list__head" aria-hidden="true">
+                <span>#</span>
+                <span>Description</span>
+                <span>Qty</span>
+                <span>Unit</span>
+                <span>Unit Price</span>
+                <span>VAT %</span>
+                <span>Est. VAT</span>
+                <span>Amount</span>
+                <span />
+              </div>
               {activeLineItems.map((item, index) => (
                 <article
-                  className="invoice-line-card"
+                  className="invoice-item-row"
                   key={`${item.id}-${index}`}
                 >
-                  <header>
-                    <strong>Item {index + 1}</strong>
-                    <button
-                      className="icon-button icon-button--danger"
-                      type="button"
-                      disabled={activeLineItems.length === 1}
-                      onClick={() =>
-                        setLineItems((items) =>
-                          (items.length ? items : activeLineItems)
-                            .filter((_, itemIndex) => itemIndex !== index)
-                            .map((entry, itemIndex) => ({
-                              ...entry,
-                              id: String(itemIndex + 1),
-                            })),
-                        )
-                      }
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  </header>
-                  <div className="form-grid">
-                    <label className="field field--full">
-                      <span>Description</span>
-                      <textarea
-                        value={item.description}
-                        onChange={(event) =>
-                          updateLine(index, { description: event.target.value })
-                        }
-                      />
-                    </label>
-                    <label className="field">
-                      <span>Quantity</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.quantity}
-                        onChange={(event) =>
-                          updateLine(index, {
-                            quantity: Number(event.target.value) || 0,
-                          })
-                        }
-                      />
-                    </label>
-                    <label className="field">
-                      <span>Unit</span>
-                      <input
-                        value={item.unitCode}
-                        onChange={(event) =>
-                          updateLine(index, { unitCode: event.target.value })
-                        }
-                      />
-                    </label>
-                    <label className="field">
-                      <span>Unit Price</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={item.unitPrice}
-                        onChange={(event) =>
-                          updateLine(index, {
-                            unitPrice: Number(event.target.value) || 0,
-                          })
-                        }
-                      />
-                    </label>
-                    <label className="field">
-                      <span>VAT %</span>
-                      <input
-                        type="number"
-                        min="0"
-                        max="100"
-                        step="0.01"
-                        value={item.vatRate}
-                        onChange={(event) =>
-                          updateLine(index, {
-                            vatRate: Number(event.target.value) || 0,
-                          })
-                        }
-                      />
-                    </label>
-                  </div>
+                  <strong className="invoice-item-row__index">{index + 1}</strong>
+                  <label><span>Description</span><textarea value={item.description} onChange={(event) => updateLine(index, { description: event.target.value })} /></label>
+                  <label><span>Qty</span><input type="number" min="0" step="0.01" value={item.quantity} onChange={(event) => updateLine(index, { quantity: Number(event.target.value) || 0 })} /></label>
+                  <label><span>Unit</span><input value={item.unitCode} onChange={(event) => updateLine(index, { unitCode: event.target.value })} /></label>
+                  <label><span>Unit Price</span><input type="number" min="0" step="0.01" value={item.unitPrice} onChange={(event) => updateLine(index, { unitPrice: Number(event.target.value) || 0 })} /></label>
+                  <label><span>VAT %</span><input type="number" min="0" max="100" step="0.01" value={item.vatRate} onChange={(event) => updateLine(index, { vatRate: Number(event.target.value) || 0 })} /></label>
+                  <strong className="invoice-item-row__vat">{money(item.vatAmount ?? (item.amount * item.vatRate) / 100)}</strong>
+                  <strong className="invoice-item-row__amount">{money(item.amount + (item.vatAmount || 0))}</strong>
+                  <button
+                    className="icon-button icon-button--danger"
+                    type="button"
+                    aria-label={`Remove invoice item ${index + 1}`}
+                    disabled={activeLineItems.length === 1}
+                    onClick={() => setLineItems((items) => (items.length ? items : activeLineItems).filter((_, itemIndex) => itemIndex !== index).map((entry, itemIndex) => ({ ...entry, id: String(itemIndex + 1) })))}
+                  >
+                    <Trash2 size={15} />
+                  </button>
                 </article>
               ))}
             </div>
@@ -928,28 +926,6 @@ export function QuotationInvoiceScreen() {
                 Subtotal: {money(totals.subTotal)} · VAT:{" "}
                 {money(totals.vatAmount)} · Total: {money(totals.amount)}
               </span>
-              <button
-                className="button"
-                type="button"
-                onClick={() =>
-                  setLineItems((items) => [
-                    ...(items.length ? items : activeLineItems),
-                    {
-                      id: String(activeLineItems.length + 1),
-                      description: "",
-                      quantity: 0,
-                      unitCode: "",
-                      unitPrice: 0,
-                      amount: 0,
-                      vatRate: data.company.vatRate,
-                      vatAmount: 0,
-                    },
-                  ])
-                }
-              >
-                <Plus size={14} />
-                Add Item
-              </button>
             </div>
           </section>
 

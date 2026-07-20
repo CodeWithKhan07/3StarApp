@@ -25,6 +25,7 @@ import {
   ReceiptText,
   Search,
   Settings,
+  Sparkles,
   Sun,
   Trash2,
   Upload,
@@ -45,6 +46,7 @@ const navGroups = [
     items: [
       ["Clients", routes.clients, Users],
       ["Quotations", routes.quotations, FileText],
+      ["Ongoing Projects", routes.ongoingProjects, CircleDollarSign],
       ["Invoices & Payments", routes.invoices, ReceiptText],
       ["Pending Payments", routes.pendingPayments, CircleDollarSign],
       ["Pending PO", routes.pendingPo, FileText],
@@ -54,13 +56,13 @@ const navGroups = [
     label: "Operations",
     items: [
       ["Projects", routes.projects, BriefcaseBusiness],
-      ["Ongoing Projects", routes.ongoingProjects, CircleDollarSign],
       ["Completed Projects", routes.completedProjects, CheckCircle2],
     ],
   },
   {
     label: "Insights & Data",
     items: [
+      ["Profit & Expenses", routes.analytics, CircleDollarSign],
       ["Statements", routes.statements, FileBarChart],
       ["History", routes.history, History],
       ["Reports", routes.reports, BarChart3],
@@ -120,6 +122,7 @@ function isActiveRoute(pathname: string, href: string) {
   if (href === routes.quotations && pathname.startsWith("/quotations"))
     return true;
   if (href === routes.invoices && pathname.startsWith("/invoices")) return true;
+  if (href === routes.analytics && pathname.startsWith("/analytics")) return true;
   if (href === routes.excelExport && pathname.startsWith("/excel-export"))
     return true;
   if (href === routes.trash && pathname.startsWith("/trash")) return true;
@@ -146,6 +149,52 @@ export function AppShell({ children }: { children: ReactNode }) {
   );
   const [sidebarHoverOpen, setSidebarHoverOpen] = useState(false);
   const scrollHideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const navigationCounts = useMemo<Record<string, number>>(() => {
+    const ongoingProjects = data.projects.filter((project) => {
+      const stage = project.billingStage || "ongoing";
+      return (
+        project.status === "in-progress" &&
+        !["pending-po", "po-done", "payment-pending"].includes(stage)
+      );
+    }).length;
+    const pendingPoProjects = data.projects.filter((project) => {
+      const stage = project.billingStage || "ongoing";
+      return (
+        project.status !== "completed" &&
+        (stage === "pending-po" || stage === "po-done")
+      );
+    }).length;
+    const pendingInvoices = data.invoices.filter((invoice) =>
+      ["pending", "partial", "overdue", "po"].includes(invoice.status),
+    ).length;
+    const paidInvoices = data.invoices.filter(
+      (invoice) => invoice.status === "paid",
+    ).length;
+    const allRecords =
+      data.clients.length +
+      data.projects.length +
+      data.quotations.length +
+      data.invoices.length;
+
+    return {
+      [routes.clients]: data.clients.length,
+      [routes.quotations]: data.quotations.length,
+      [routes.ongoingProjects]: ongoingProjects,
+      [routes.invoices]: data.invoices.length,
+      [routes.pendingPayments]: pendingInvoices,
+      [routes.pendingPo]: pendingPoProjects,
+      [routes.projects]: data.projects.length,
+      [routes.completedProjects]: data.projects.filter(
+        (project) => project.status === "completed",
+      ).length,
+      [routes.analytics]: paidInvoices,
+      [routes.statements]: paidInvoices,
+      [routes.history]: allRecords,
+      [routes.reports]: allRecords,
+      [routes.trash]: data.trash?.length || 0,
+    };
+  }, [data]);
 
   const isDataEntryRoute =
     pathname.includes("/new") ||
@@ -489,6 +538,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
               {group.items.map(([label, href, Icon]) => {
                 const isActive = isActiveRoute(pathname, href);
+                const count = navigationCounts[href];
 
                 return (
                   <Link
@@ -499,6 +549,11 @@ export function AppShell({ children }: { children: ReactNode }) {
                   >
                     <Icon size={19} />
                     <span>{label}</span>
+                    {count !== undefined ? (
+                      <span className="navigation-count" aria-label={`${count} items`}>
+                        {count > 999 ? "999+" : count}
+                      </span>
+                    ) : null}
                   </Link>
                 );
               })}
@@ -631,17 +686,27 @@ export function AppShell({ children }: { children: ReactNode }) {
               aria-label={
                 theme === "dark"
                   ? "Switch to light theme"
-                  : "Switch to dark theme"
+                  : theme === "professional"
+                  ? "Switch to dark theme"
+                  : "Switch to professional theme"
               }
               title={
                 theme === "dark"
                   ? "Switch to light theme"
-                  : "Switch to dark theme"
+                  : theme === "professional"
+                  ? "Switch to dark theme"
+                  : "Switch to professional theme"
               }
               onClick={toggleTheme}
               type="button"
             >
-              {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+              {theme === "dark" ? (
+                <Sun size={17} />
+              ) : theme === "professional" ? (
+                <Moon size={17} />
+              ) : (
+                <Sparkles size={17} />
+              )}
             </button>
 
             <button aria-label="Notifications" type="button">
@@ -691,6 +756,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         <nav className="mobile-bottom-nav" aria-label="Mobile quick navigation">
           {mobileBottomItems.map(([label, href, Icon]) => {
             const isActive = isActiveRoute(pathname, href);
+            const count = navigationCounts[href];
 
             return (
               <Link
@@ -700,6 +766,11 @@ export function AppShell({ children }: { children: ReactNode }) {
               >
                 <Icon size={18} />
                 <span>{label}</span>
+                {count !== undefined ? (
+                  <span className="mobile-navigation-count" aria-label={`${count} items`}>
+                    {count > 99 ? "99+" : count}
+                  </span>
+                ) : null}
               </Link>
             );
           })}

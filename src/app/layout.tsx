@@ -13,18 +13,18 @@ export const viewport: Viewport = { width: "device-width", initialScale: 1, view
 const themeInitScript = `(function () {
   try {
     var stored = window.localStorage.getItem("3star-theme");
-    var theme = stored === "dark" || stored === "light"
+    var theme = stored === "dark" || stored === "light" || stored === "professional"
       ? stored
-      : (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      : "professional";
     document.documentElement.setAttribute("data-theme", theme);
   } catch (error) {
-    document.documentElement.setAttribute("data-theme", "light");
+    document.documentElement.setAttribute("data-theme", "professional");
   }
 })();`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" data-theme="light" suppressHydrationWarning>
+    <html lang="en" data-theme="professional" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>

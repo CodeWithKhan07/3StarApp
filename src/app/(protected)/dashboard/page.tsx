@@ -29,32 +29,34 @@ export default function DashboardPage() {
   );
   const invoiced = invoices.reduce((sum, invoice) => sum + invoice.amount, 0);
   const received = invoices.reduce((sum, invoice) => sum + invoice.received, 0);
+  const profit = invoices.reduce((sum, invoice) => sum + (invoice.profitAmount || 0), 0);
   const receivedRate = invoiced ? Math.round((received / invoiced) * 100) : 0;
 
   const metrics = [
-    ["Total Companies", String(clients.length), "Live", Building2],
-    ["Total Projects", String(projects.length), "Live", BriefcaseBusiness],
+    ["Total Companies", String(clients.length), "Live", Building2, routes.clients],
+    ["Total Projects", String(projects.length), "Live", BriefcaseBusiness, routes.projects],
     [
       "Completed Projects",
       String(projects.filter((project) => project.status === "completed").length),
       "Live",
-      CheckCircle2,
+      CheckCircle2, routes.completedProjects,
     ],
     [
       "In Progress",
       String(projects.filter((project) => project.status === "in-progress").length),
       "Live",
-      Clock3,
+      Clock3, routes.ongoingProjects,
     ],
     [
       "Total Work Value",
       money(projects.reduce((sum, project) => sum + project.value, 0)),
       "SAR",
-      CircleDollarSign,
+      CircleDollarSign, routes.analytics,
     ],
-    ["Total Invoiced", money(invoiced), "SAR", FileText],
-    ["Total Received", money(received), "SAR", ReceiptText],
-    ["Outstanding Balance", money(invoiced - received), "SAR", CircleDollarSign],
+    ["Total Invoiced", money(invoiced), "SAR", FileText, routes.invoices],
+    ["Total Income", money(received), "SAR", ReceiptText, routes.analytics],
+    ["Total Profit", money(profit), "SAR", ArrowUpRight, routes.analytics],
+    ["Outstanding Balance", money(invoiced - received), "SAR", CircleDollarSign, routes.pendingPayments],
   ] as const;
 
   return (
@@ -75,8 +77,8 @@ export default function DashboardPage() {
       </section>
 
       <section className="metrics">
-        {metrics.map(([label, value, trend, Icon]) => (
-          <article className="metric-card card" key={label}>
+        {metrics.map(([label, value, trend, Icon, href]) => (
+          <Link className="metric-card metric-card--link card" href={href} key={label}>
             <div className="metric-card__top">
               <span className="metric-card__icon">
                 <Icon size={15} />
@@ -86,7 +88,7 @@ export default function DashboardPage() {
 
             <p>{label}</p>
             <strong>{value}</strong>
-          </article>
+          </Link>
         ))}
       </section>
 

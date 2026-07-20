@@ -1007,7 +1007,11 @@ export function InvoiceEditScreen() {
           <span>Status</span>
           <select name="status" defaultValue={record.status}>
             {invoiceStatusOptions.map((item) => (
-              <option key={item.value} value={item.value}>
+              <option
+                key={item.value}
+                value={item.value}
+                disabled={item.value === "paid" && record.status !== "paid"}
+              >
                 {item.label}
               </option>
             ))}
