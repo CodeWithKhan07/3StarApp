@@ -1,10 +1,10 @@
 "use client";
 
 import type {
-    Client,
-    CompanyProfile,
-    Invoice,
-    Quotation,
+  Client,
+  CompanyProfile,
+  Invoice,
+  Quotation,
 } from "@/domain/entities/business";
 import QRCode from "qrcode";
 import quotationStaticQr from "../../../assets/quotation-static-qr.jpeg";
@@ -40,10 +40,10 @@ const displayDate = (value?: string) => {
   return Number.isNaN(parsed.valueOf())
     ? value
     : new Intl.DateTimeFormat("en-GB", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-      }).format(parsed);
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }).format(parsed);
 };
 
 function tlvBase64(fields: Array<[number, string]>) {
@@ -171,17 +171,17 @@ export async function exportInvoicePdf(
     const lines = invoice.lineItems?.length
       ? invoice.lineItems
       : [
-          {
-            id: "1",
-            description: invoice.project || "",
-            quantity: subtotal ? 1 : 0,
-            unitCode: "",
-            unitPrice: subtotal,
-            amount: subtotal,
-            vatRate: effectiveVatRate,
-            vatAmount: vat,
-          },
-        ];
+        {
+          id: "1",
+          description: invoice.project || "",
+          quantity: subtotal ? 1 : 0,
+          unitCode: "",
+          unitPrice: subtotal,
+          amount: subtotal,
+          vatRate: effectiveVatRate,
+          vatAmount: vat,
+        },
+      ];
     const rows = lines
       .map((item, index) => {
         const lineVatRate = item.vatRate ?? effectiveVatRate;
@@ -211,8 +211,8 @@ export async function exportInvoicePdf(
       <section class="top"><div><img class="logo" src="${quotationLogo.src}" alt="3 Stars"></div><div class="title"><h1>TAX INVOICE</h1><span class="number">#${escapeHtml(invoice.id)}</span><p>Balance Due</p><strong>${escapeHtml(currency)}${amount(balanceDue)}</strong></div></section>
       <section class="seller"><b>${escapeHtml(supplierLegalName)}</b>${supplierName && supplierName !== supplierLegalName ? `<b>${escapeHtml(supplierName)}</b>` : ""}<br>${escapeHtml(supplierAddress)}<div style="display:grid;grid-template-columns:max-content 3mm max-content;line-height:1.5"><span>CR No.</span><span>:</span><span>TRN${escapeHtml(supplierCr)}</span><span>VAT No.</span><span>:</span><span>${escapeHtml(supplierVat)}</span></div></section>
       <section class="parties"><div class="bill"><h3>Bill To</h3><p><b>${escapeHtml(invoice.companyName)}</b><br>${escapeHtml(invoice.customerAddress || "")}${invoice.customerAddress ? "<br>" : ""}${invoice.customerVatNumber ? `TRN ${escapeHtml(invoice.customerVatNumber)}` : ""}</p></div><div class="meta"><span>Invoice Date :</span><b>${displayDate(invoice.invoiceDate)}</b><span>Terms :</span><b>${escapeHtml(invoice.paymentTerms || "Due on Receipt")}</b><span>Due Date :</span><b>${displayDate(invoice.dueDate || invoice.invoiceDate)}</b><span>P.O.# :</span><b>${escapeHtml(invoice.purchaseOrderNumber || "")}</b><span>VAT No. :</span><b>${escapeHtml(invoice.customerVatNumber || "")}</b></div></section>
-      <section class="subject">Subject :<b>${escapeHtml(invoice.project || invoice.companyName)}</b></section>
-      <table class="items"><thead><tr><th class="c-index">#</th><th class="c-desc">Item &amp; Description</th><th class="c-qty">Qty</th><th class="c-rate">Rate</th><th class="c-taxable">Taxable<br>Amount</th><th class="c-tax-rate">Tax %</th><th class="c-tax">Tax</th><th class="c-amount">Amount</th></tr></thead><tbody>${rows}</tbody></table>
+      <section class="subject">Subject :<b>${escapeHtml(invoice.project || invoice.companyName)}</b></section></section>
+      <table class="items"><thead><tr><th class="c-index">#</th><th class="c-desc">Item &amp; Description</th><th class="c-qty">Qty</th><th class="c-rate">Rate</th><th class="c-taxable">Taxable<br>Amount</th><th class="c-tax-rate">Tax %</th><th class="c-tax">Tax</th><th class="c-amount">Amount</th></tr></thead><tbody>${rows}</tbody></table></section>
       <section class="invoice-footer"><section class="totals"><div class="total-line"><span>Sub Total</span><b>${amount(subtotal)}</b></div><div class="total-line"><span>Total Taxable Amount</span><b>${amount(subtotal)}</b></div><div class="total-line"><span>VAT (${amount(effectiveVatRate).replace(/\.00$/, "")}%)</span><b>${amount(vat)}</b></div><div class="total-line grand"><span>Total</span><b>${escapeHtml(currency)}${amount(total)}</b></div></section>
       <section class="invoice-lower"><div class="zatca"><img class="qr" src="${qr}" alt="ZATCA QR"><p>This QR code has been generated as per ZATCA's regulations.</p></div><div class="notes"><h3>Notes</h3><p>${escapeHtml(notes)}</p>${supplierName ? `<p style="font-size:8.3pt;font-weight:600;line-height:1.4;margin-bottom:1.4mm;overflow-wrap:anywhere">${escapeHtml(supplierName)}</p>` : ""}${supplierEmail ? `<p style="font-size:8.3pt;font-weight:600;line-height:1.4;margin-bottom:1.4mm;overflow-wrap:anywhere">${escapeHtml(supplierEmail)}</p>` : ""}${supplierPhone ? `<p style="font-size:8.3pt;font-weight:600;line-height:1.4;margin-bottom:1.4mm;overflow-wrap:anywhere">${escapeHtml(supplierPhone)}</p>` : ""}</div></section>
     </section></main></body></html>`;
@@ -248,17 +248,17 @@ export async function exportQuotationPdf(
     const lines = quotation.lineItems?.length
       ? quotation.lineItems
       : [
-          {
-            serialNo: 1,
-            description: quotation.scopeOfWork || "",
-            quantity: 1,
-            sqm: 0,
-            unitPrice: subtotal,
-            amount: subtotal,
-            vatRate: baseRate,
-            vatAmount: vat,
-          },
-        ];
+        {
+          serialNo: 1,
+          description: quotation.scopeOfWork || "",
+          quantity: 1,
+          sqm: 0,
+          unitPrice: subtotal,
+          amount: subtotal,
+          vatRate: baseRate,
+          vatAmount: vat,
+        },
+      ];
     const showSqm = Boolean(quotation.showSqm);
     const rows = lines
       .map((item, index) => {
