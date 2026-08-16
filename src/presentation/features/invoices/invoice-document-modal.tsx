@@ -38,7 +38,7 @@ export function InvoiceDocumentForm({
           {
             id: "1",
             description: "",
-            quantity: 0,
+            quantity: 1,
             unitCode: "",
             unitPrice: 0,
             amount: 0,
@@ -110,7 +110,7 @@ export function InvoiceDocumentForm({
       {
         id: String(items.length + 1),
         description: "",
-        quantity: 0,
+        quantity: 1,
         unitCode: "",
         unitPrice: 0,
         amount: 0,
@@ -474,14 +474,21 @@ export function InvoiceDocumentForm({
                       <input
                         className="inline-input"
                         type="number"
-                        min="0"
-                        step="0.01"
+                        min="1"
+                        step="1"
+                        pattern="[1-9][0-9]*"
                         value={item.quantity}
                         onChange={(event) =>
                           updateLine(index, {
-                            quantity: number(event.target.value),
+                            quantity: Math.max(0, Math.floor(number(event.target.value))),
                           })
                         }
+                        onBlur={(event) => {
+                          const clamped = Math.max(1, Math.floor(number(event.target.value)));
+                          if (clamped !== item.quantity) {
+                            updateLine(index, { quantity: clamped });
+                          }
+                        }}
                       />
                     </td>
                     <td>
@@ -587,6 +594,15 @@ export function InvoiceDocumentForm({
           </div>
         </form>
       </div>
+      <button
+        className="invoice-fab"
+        type="button"
+        onClick={addInvoiceItem}
+        aria-label="Add invoice item"
+      >
+        <Plus size={20} />
+        Add Item
+      </button>
     </div>
   );
 }
