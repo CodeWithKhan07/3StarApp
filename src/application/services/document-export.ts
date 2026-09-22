@@ -191,7 +191,7 @@ export async function exportInvoicePdf(
       })
       .join("");
     const itemRowPadding =
-      lines.length > 10 ? 1.0 : lines.length > 5 ? 1.4 : 2.0;
+      lines.length > 4 ? 1.4 : lines.length > 2 ? 2.2 : 3.2;
     const supplierLegalName =
       invoice.supplierLegalName ||
       company.legalCompanyName ||
@@ -206,46 +206,60 @@ export async function exportInvoicePdf(
     const notes =
       invoice.notes || invoice.remarks || "Thanks for your business.";
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Invoice ${escapeHtml(invoice.id)}</title><style>${sharedCss}
-      .invoice{position:relative;width:100%;padding:8mm 10mm 6mm;font-size:8.5pt;line-height:1.2;color:#202020;background:#fff;box-sizing:border-box}
-      .invoice-header{margin-bottom:3mm;break-inside:avoid;page-break-inside:avoid}
-      .top{display:grid;grid-template-columns:1fr 62mm;min-height:34mm;margin-bottom:2mm}
-      .logo{width:50mm;height:32mm;object-fit:contain}
-      .title{text-align:right}.title h1{margin:0 0 3mm;color:#333;font-size:24pt;font-weight:400;line-height:1;letter-spacing:0}.title .number{display:block;font-size:7.2pt;color:#222;margin-bottom:4mm}.title p{margin:0 0 1mm;color:#222}.title strong{display:block;font-size:11pt;font-weight:700}
-      .seller{margin-top:-4mm;margin-bottom:4mm;max-width:95mm;font-size:8.5pt;line-height:1.35;word-break:break-word;overflow-wrap:anywhere}.seller b{display:block;font-size:9.5pt;font-weight:600;line-height:1.3;overflow-wrap:anywhere;word-break:break-word}
-      .parties{display:grid;grid-template-columns:1fr 65mm;gap:10mm;margin-bottom:4mm}.bill h3{font-size:9.5pt;font-weight:600;margin:0 0 2mm}.bill p{margin:0;font-size:8.5pt;line-height:1.35;word-break:break-word;overflow-wrap:anywhere}
-      .meta{display:grid;grid-template-columns:27mm 1fr;gap:2mm 4mm;font-size:8.5pt;align-content:start}.meta span{text-align:right;color:#222;font-size:9pt}.meta b{font-size:8.5pt;font-weight:400;text-align:right;word-break:break-word;overflow-wrap:anywhere}
-      .subject{margin:0 0 3mm;font-size:8.5pt;word-break:break-word;overflow-wrap:anywhere}.subject b{display:block;margin-top:1.5mm;font-size:8.5pt;font-weight:600;word-break:break-word;overflow-wrap:anywhere}
-      .items{width:100%;border-collapse:collapse;table-layout:fixed;font-size:8.5pt;margin-bottom:3mm}.items thead{display:table-header-group}.items tbody{break-inside:auto;page-break-inside:auto}.items tr{break-inside:avoid;page-break-inside:avoid}
-      .items th{background:#262a2d;color:#fff;border-bottom:1px solid #262a2d;font-weight:400;text-align:center;padding:2.5mm 1mm;line-height:1.1;overflow-wrap:anywhere;word-break:break-word}
-      .items td{border-bottom:.25mm solid #d7d7d7;padding:${itemRowPadding}mm 1mm;text-align:center;vertical-align:top;overflow-wrap:anywhere;word-break:break-word}
+      /* ── Invoice wrapper: use CSS table layout so footer stays with content ── */
+      .invoice{position:relative;padding:11mm 11.5mm 9mm;font-size:9pt;line-height:1.25;color:#202020;display:table;width:100%;table-layout:fixed}
+      /* Body = table-row-group: holds header + items, breaks across pages naturally */
+      .invoice-body{display:table-row-group}
+      /* Footer = table-footer-group: browser keeps it on last page of the table */
+      .invoice-footer-wrap{display:table-footer-group}
+      /* Inner cell wrappers needed for display:table-* children */
+      .invoice-body-cell,.invoice-footer-cell{display:table-cell;width:100%;vertical-align:top}
+      /* Header block should not split across pages */
+      .invoice-header{break-inside:avoid;page-break-inside:avoid}
+      .top{display:grid;grid-template-columns:1fr 62mm;min-height:48mm}
+      .logo{width:60mm;height:45mm;object-fit:contain}
+      .title{text-align:right}.title h1{margin:0 0 7mm;color:#333;font-size:28pt;font-weight:400;line-height:1;letter-spacing:0}.title .number{display:block;font-size:7.2pt;color:#222;margin-bottom:7.5mm}.title p{margin:0 0 1.5mm;color:#222}.title strong{display:block;font-size:12pt;font-weight:700}
+      .seller{margin-top:-6mm;margin-bottom:13mm;max-width:95mm;font-size:9pt;line-height:1.5;word-break:break-word;overflow-wrap:anywhere}.seller b{display:block;font-size:10pt;font-weight:400;line-height:1.35;overflow-wrap:anywhere;word-break:break-word}
+      .parties{display:grid;grid-template-columns:1fr 65mm;gap:18mm;margin-bottom:10mm}.bill h3{font-size:10pt;font-weight:400;margin:0 0 4mm}.bill p{margin:0;font-size:9pt;line-height:1.5;word-break:break-word;overflow-wrap:anywhere}
+      .meta{display:grid;grid-template-columns:29mm 1fr;gap:3.9mm 5mm;font-size:9pt;align-content:start}.meta span{text-align:right;color:#222;font-size:10pt}.meta b{font-size:9pt;font-weight:400;text-align:right;word-break:break-word;overflow-wrap:anywhere}
+      .subject{margin:0 0 5mm;font-size:9pt;word-break:break-word;overflow-wrap:anywhere}.subject b{display:block;margin-top:5mm;font-size:9pt;font-weight:400;word-break:break-word;overflow-wrap:anywhere}
+      /* Items table: rows break across pages, thead repeats */
+      .items{width:100%;border-collapse:collapse;table-layout:fixed;font-size:9pt}.items thead{display:table-header-group}.items tbody{break-inside:auto;page-break-inside:auto}.items tr{break-inside:avoid;page-break-inside:avoid}
+      .items th{background:#262a2d;color:#fff;border-bottom:1px solid #262a2d;font-weight:400;text-align:center;padding:3.7mm 1.2mm;line-height:1.15;overflow-wrap:anywhere;word-break:break-word}
+      .items td{border-bottom:.25mm solid #d7d7d7;padding:${itemRowPadding}mm 1.2mm;text-align:center;vertical-align:top;overflow-wrap:anywhere;word-break:break-word}
       .items .c-index{width:8mm}.items .c-desc{width:58mm;text-align:left}.items .c-qty{width:15mm;white-space:nowrap}.items .c-rate{width:20mm;white-space:nowrap}.items .c-taxable{width:24mm;white-space:nowrap}.items .c-tax-rate{width:18mm;white-space:nowrap}.items .c-tax{width:19mm;white-space:nowrap}.items .c-amount{width:25mm;white-space:nowrap}
       .line-description{display:block;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;max-width:100%}
-      .invoice-footer{margin-top:3mm;break-inside:avoid;page-break-inside:avoid}
-      .totals{width:68mm;margin:0 0 0 auto;font-size:8.5pt;break-inside:avoid;page-break-inside:avoid}
-      .total-line{display:grid;grid-template-columns:1fr 28mm;gap:8mm;padding:2mm 0;border-bottom:.25mm solid #e3e3e3}.total-line span{text-align:right}.total-line b{text-align:right;font-weight:400}.grand{font-weight:700}.grand b{font-weight:700}
-      .invoice-lower{display:grid;grid-template-columns:1fr 68mm;gap:10mm;align-items:start;margin-top:4mm;break-inside:avoid;page-break-inside:avoid}
-      .notes{max-width:76mm;font-size:7pt;line-height:1.2;word-break:break-word;overflow-wrap:anywhere}.notes h3{margin:0 0 1.5mm;font-size:9.5pt;font-weight:600}.notes p{margin:0 0 1.5mm;overflow-wrap:anywhere;word-break:break-word}
-      .zatca{padding:0 2mm 2mm;text-align:center;color:#333;font-size:7.5pt}.zatca p{margin:0;line-height:1.3;overflow-wrap:anywhere;word-break:break-word}
-      .qr{width:26mm;height:26mm;image-rendering:pixelated;margin:0 auto 1.5mm;display:block}
+      /* Totals block: atomic — never splits mid-total */
+      .totals{width:70mm;margin:7mm 0 0 auto;font-size:9pt;break-inside:avoid;page-break-inside:avoid}
+      .total-line{display:grid;grid-template-columns:1fr 28mm;gap:12mm;padding:3.3mm 0;border-bottom:.25mm solid #e3e3e3}.total-line span{text-align:right}.total-line b{text-align:right;font-weight:400}.grand{font-weight:700}.grand b{font-weight:700}
+      /* Lower section (QR + notes): atomic block */
+      .invoice-lower{display:grid;grid-template-columns:1fr 70mm;gap:18mm;align-items:start;margin-top:8mm;break-inside:avoid;page-break-inside:avoid}
+      .notes{max-width:76mm;font-size:7pt;line-height:1.28;word-break:break-word;overflow-wrap:anywhere}.notes h3{margin:0 0 2mm;font-size:10pt;font-weight:400}.notes p{margin:0 0 1.8mm;overflow-wrap:anywhere;word-break:break-word}
+      .zatca{padding:0 2mm 3mm;text-align:center;color:#333;font-size:8pt}.zatca p{margin:0;line-height:1.35;overflow-wrap:anywhere;word-break:break-word}
+      .qr{width:32mm;height:32mm;image-rendering:pixelated;margin:0 auto 2.5mm;display:block}
+      /* ── Print overrides ── */
       @media print{
-        @page{size:A4;margin:6mm 8mm}
-        html,body{height:auto!important;min-height:0!important;margin:0!important;padding:0!important;background:#fff!important;overflow:visible!important}
-        .page,.invoice{min-height:0!important;height:auto!important;padding:0!important;margin:0!important;overflow:visible!important;break-after:auto!important}
-        .items{width:100%!important;border-collapse:collapse!important}
-        .items td{padding:${itemRowPadding}mm 1mm!important}
-        .items thead{display:table-header-group!important}
-        .invoice-footer{break-inside:avoid!important;page-break-inside:avoid!important}
+        html,body{height:auto;overflow:visible;margin:0}
+        .page{min-height:0;break-after:auto}
+        .invoice{min-height:0;height:auto;overflow:visible;break-after:auto;display:table;width:100%;table-layout:fixed}
+        .invoice-body{display:table-row-group}
+        .invoice-footer-wrap{display:table-footer-group}
+        .invoice-body-cell,.invoice-footer-cell{display:table-cell;width:100%;vertical-align:top}
+        .items td{padding:2mm 1.2mm}
+        .items thead{display:table-header-group}
       }
       </style></head><body><main class="page invoice">
+      <div class="invoice-body"><div class="invoice-body-cell">
       <section class="invoice-header"><section class="top"><div><img class="logo" src="${quotationLogo.src}" alt="3 Stars"></div><div class="title"><h1>TAX INVOICE</h1><span class="number">#${escapeHtml(invoice.id)}</span><p>Balance Due</p><strong>${escapeHtml(currency)}${amount(balanceDue)}</strong></div></section>
-      <section class="seller"><b>${escapeHtml(supplierLegalName)}</b>${supplierName && supplierName !== supplierLegalName ? `<b>${escapeHtml(supplierName)}</b>` : ""}<br>${escapeHtml(supplierAddress)}<div style="display:grid;grid-template-columns:max-content 3mm max-content;line-height:1.4;margin-top:1.5mm"><span>CR No.</span><span>:</span><span>TRN${escapeHtml(supplierCr)}</span><span>VAT No.</span><span>:</span><span>${escapeHtml(supplierVat)}</span></div></section>
+      <section class="seller"><b>${escapeHtml(supplierLegalName)}</b>${supplierName && supplierName !== supplierLegalName ? `<b>${escapeHtml(supplierName)}</b>` : ""}<br>${escapeHtml(supplierAddress)}<div style="display:grid;grid-template-columns:max-content 3mm max-content;line-height:1.5"><span>CR No.</span><span>:</span><span>TRN${escapeHtml(supplierCr)}</span><span>VAT No.</span><span>:</span><span>${escapeHtml(supplierVat)}</span></div></section>
       <section class="parties"><div class="bill"><h3>Bill To</h3><p><b>${escapeHtml(invoice.companyName)}</b><br>${escapeHtml(invoice.customerAddress || "")}${invoice.customerAddress ? "<br>" : ""}${invoice.customerVatNumber ? `TRN ${escapeHtml(invoice.customerVatNumber)}` : ""}</p></div><div class="meta"><span>Invoice Date :</span><b>${displayDate(invoice.invoiceDate)}</b><span>Terms :</span><b>${escapeHtml(invoice.paymentTerms || "Due on Receipt")}</b><span>Due Date :</span><b>${displayDate(invoice.dueDate || invoice.invoiceDate)}</b><span>P.O.# :</span><b>${escapeHtml(invoice.purchaseOrderNumber || "")}</b><span>VAT No. :</span><b>${escapeHtml(invoice.customerVatNumber || "")}</b></div></section>
       <section class="subject">Subject :<b>${escapeHtml(invoice.project || invoice.companyName)}</b></section></section>
       <table class="items"><thead><tr><th class="c-index">#</th><th class="c-desc">Item &amp; Description</th><th class="c-qty">Qty</th><th class="c-rate">Rate</th><th class="c-taxable">Taxable<br>Amount</th><th class="c-tax-rate">Tax %</th><th class="c-tax">Tax</th><th class="c-amount">Amount</th></tr></thead><tbody>${rows}</tbody></table>
-      <section class="invoice-footer">
+      </div></div>
+      <div class="invoice-footer-wrap"><div class="invoice-footer-cell">
       <section class="totals"><div class="total-line"><span>Sub Total</span><b>${amount(subtotal)}</b></div><div class="total-line"><span>Total Taxable Amount</span><b>${amount(subtotal)}</b></div><div class="total-line"><span>VAT (${amount(effectiveVatRate).replace(/\.00$/, "")}%)</span><b>${amount(vat)}</b></div><div class="total-line grand"><span>Total</span><b>${escapeHtml(currency)}${amount(total)}</b></div></section>
-      <section class="invoice-lower"><div class="zatca"><img class="qr" src="${qr}" alt="ZATCA QR"><p>This QR code has been generated as per ZATCA's regulations.</p></div><div class="notes"><h3>Notes</h3><p>${escapeHtml(notes)}</p>${supplierName ? `<p style="font-size:8pt;font-weight:600;line-height:1.3;margin-bottom:1mm;overflow-wrap:anywhere">${escapeHtml(supplierName)}</p>` : ""}${supplierEmail ? `<p style="font-size:8pt;font-weight:600;line-height:1.3;margin-bottom:1mm;overflow-wrap:anywhere">${escapeHtml(supplierEmail)}</p>` : ""}${supplierPhone ? `<p style="font-size:8pt;font-weight:600;line-height:1.3;margin-bottom:1mm;overflow-wrap:anywhere">${escapeHtml(supplierPhone)}</p>` : ""}</div></section>
-      </section>
+      <section class="invoice-lower"><div class="zatca"><img class="qr" src="${qr}" alt="ZATCA QR"><p>This QR code has been generated as per ZATCA's regulations.</p></div><div class="notes"><h3>Notes</h3><p>${escapeHtml(notes)}</p>${supplierName ? `<p style="font-size:8.3pt;font-weight:600;line-height:1.4;margin-bottom:1.4mm;overflow-wrap:anywhere">${escapeHtml(supplierName)}</p>` : ""}${supplierEmail ? `<p style="font-size:8.3pt;font-weight:600;line-height:1.4;margin-bottom:1.4mm;overflow-wrap:anywhere">${escapeHtml(supplierEmail)}</p>` : ""}${supplierPhone ? `<p style="font-size:8.3pt;font-weight:600;line-height:1.4;margin-bottom:1.4mm;overflow-wrap:anywhere">${escapeHtml(supplierPhone)}</p>` : ""}</div></section>
+      </div></div>
     </main></body></html>`;
 
     await finishPrint(popup, html);
