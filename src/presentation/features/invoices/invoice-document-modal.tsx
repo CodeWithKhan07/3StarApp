@@ -1,8 +1,9 @@
 "use client";
 
 import type { InvoiceImportDraft } from "@/application/services/invoice-import";
-import type { Invoice } from "@/domain/entities/business";
+import type { CustomField, Invoice } from "@/domain/entities/business";
 import { createNextInvoiceId } from "@/lib/record-ids";
+import { CustomFieldsEditor } from "@/presentation/components/custom-fields-editor";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
 import { Plus, Trash2 } from "lucide-react";
 import { useMemo, useState, type FormEvent } from "react";
@@ -31,6 +32,7 @@ export function InvoiceDocumentForm({
   const [discountAmount, setDiscountAmount] = useState(
     draft?.discountAmount ?? 0,
   );
+  const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [lineItems, setLineItems] = useState<NonNullable<Invoice["lineItems"]>>(
     draft?.lineItems.length
       ? draft.lineItems
@@ -157,6 +159,7 @@ export function InvoiceDocumentForm({
       vatAmount: totals.vatAmount,
       discountAmount,
       lineItems,
+      customFields,
     };
 
     setSubmitting(true);
@@ -428,6 +431,12 @@ export function InvoiceDocumentForm({
               <textarea name="notes" rows={3} defaultValue={draft?.notes} />
             </label>
           </div>
+
+          <CustomFieldsEditor
+            fields={customFields}
+            onChange={setCustomFields}
+            documentName="invoice"
+          />
 
           <div className="quotation-items-toolbar invoice-items-toolbar">
             <div>

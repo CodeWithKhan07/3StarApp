@@ -8,15 +8,16 @@
   "scripts": {
     "dev": "next dev --webpack",
     "build": "next build",
+    "build:desktop": "DESKTOP_BUILD=true next build",
     "start": "next start",
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:logic": "tsc -p tsconfig.logic-tests.json && node --test tests/business-records.test.cjs",
     "data:import": "node scripts/import-workbook.cjs",
     "desktop:dev": "concurrently -k \"npm run dev\" \"wait-on http://localhost:3000 && electron .\"",
-    "desktop:build": "npm run build && electron-builder",
-    "desktop:pack": "npm run build && electron-builder --dir",
-    "dist": "next build && electron-builder --win"
+    "desktop:build": "npm run build:desktop && electron-builder",
+    "desktop:pack": "npm run build:desktop && electron-builder --dir",
+    "dist": "npm run build:desktop && electron-builder --win"
   },
   "dependencies": {
     "@types/qrcode": "^1.5.6",

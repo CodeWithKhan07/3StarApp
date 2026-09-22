@@ -5,7 +5,7 @@ import {
     parseQuotationDocument,
     type QuotationImportDraft,
 } from "@/application/services/quotation-import";
-import type { BusinessDataSet } from "@/domain/entities/business";
+import type { BusinessDataSet, CustomField } from "@/domain/entities/business";
 import {
     createNextQuotationId,
     createQuotationSerial,
@@ -52,11 +52,12 @@ type QuotationLineItemDraft = Omit<
   vatRate: string;
 };
 
-type QuotationStatus = "draft" | "sent" | "approved" | "rejected" | "expired";
+type QuotationStatus = Quotation["status"];
 
 const statusOptions: { label: string; value: QuotationStatus }[] = [
   { label: "Draft", value: "draft" },
   { label: "Sent", value: "sent" },
+  { label: "Pending PO", value: "pending-po" },
   { label: "Approved", value: "approved" },
   { label: "Rejected", value: "rejected" },
   { label: "Expired", value: "expired" },
@@ -203,6 +204,8 @@ function normalizeQuotation(quotation: Quotation) {
     status: readFirstString(record, ["status"], "draft") as QuotationStatus,
     followUpDate: readFirstString(record, ["followUpDate"], ""),
     remarks: readFirstString(record, ["remarks", "notes"], ""),
+    createdAt: readFirstString(record, ["createdAt"], ""),
+    updatedAt: readFirstString(record, ["updatedAt"], ""),
   };
 }
 
@@ -244,7 +247,9 @@ export function QuotationsScreen() {
   const [dateTo, setDateTo] = useState("");
   const [minAmount, setMinAmount] = useState("");
   const [maxAmount, setMaxAmount] = useState("");
-  const [sortBy, setSortBy] = useState("newest");
+  const [sortBy, setSortBy] = useState("recently-modified");
+  const [modifiedWithin, setModifiedWithin] = useState("all");
+  const [filterReferenceTime] = useState(() => Date.now());
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   const [showForm, setShowForm] = useState(false);
@@ -268,6 +273,7 @@ export function QuotationsScreen() {
   const [lineItems, setLineItems] = useState<QuotationLineItemDraft[]>([
     emptyLineItem(1),
   ]);
+  const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [editingId, setEditingId] = useState("");
   const [draft, setDraft] = useState<ReturnType<
@@ -372,6 +378,10 @@ export function QuotationsScreen() {
     const toTime = dateTo ? new Date(dateTo).getTime() : null;
     const minValue = minAmount.trim() ? Number(minAmount) : null;
     const maxValue = maxAmount.trim() ? Number(maxAmount) : null;
+    const modifiedCutoff =
+      modifiedWithin === "all"
+        ? null
+        : filterReferenceTime - Number(modifiedWithin) * 24 * 60 * 60 * 1000;
 
     const result = quotations.filter((quotation) => {
       const issueTime = quotation.issueDate
@@ -398,6 +408,11 @@ export function QuotationsScreen() {
       const matchesTo = !toTime || issueTime <= toTime;
       const matchesMin = minValue === null || quotation.amount >= minValue;
       const matchesMax = maxValue === null || quotation.amount <= maxValue;
+      const activityTime = new Date(
+        quotation.updatedAt || quotation.createdAt || quotation.issueDate || 0,
+      ).getTime();
+      const matchesModified =
+        modifiedCutoff === null || activityTime >= modifiedCutoff;
 
       return (
         matchesQuery &&
@@ -406,11 +421,17 @@ export function QuotationsScreen() {
         matchesFrom &&
         matchesTo &&
         matchesMin &&
-        matchesMax
+        matchesMax &&
+        matchesModified
       );
     });
 
     return result.sort((a, b) => {
+      if (sortBy === "recently-modified") {
+        const activity = (item: typeof a) =>
+          new Date(item.updatedAt || item.createdAt || item.issueDate || 0).getTime();
+        return activity(b) - activity(a);
+      }
       if (sortBy === "oldest") {
         return (
           new Date(a.issueDate || 0).getTime() -
@@ -445,6 +466,8 @@ export function QuotationsScreen() {
     minAmount,
     maxAmount,
     sortBy,
+    modifiedWithin,
+    filterReferenceTime,
   ]);
 
   const stats = useMemo(() => {
@@ -574,6 +597,13 @@ export function QuotationsScreen() {
       customerCountry: clientSource === "new" ? customerCountry : undefined,
       status: "draft",
       followUpDate: "",
+      customFields: customFields
+        .map((field) => ({
+          ...field,
+          label: field.label.trim(),
+          value: field.value.trim(),
+        }))
+        .filter((field) => field.label && field.value),
     };
 
     try {
@@ -582,6 +612,7 @@ export function QuotationsScreen() {
       setImportDraft(null);
       resetQuotationClientFields();
       setLineItems([emptyLineItem(1)]);
+      setCustomFields([]);
       formElement.reset();
     } catch (caughtError) {
       setFormError(
@@ -685,8 +716,6 @@ export function QuotationsScreen() {
     quotation: ReturnType<typeof normalizeQuotation>,
     nextStatus: string,
   ) {
-    if (quotation.status === "approved") return;
-
     setFormError("");
     try {
       await updateQuotationStatus(quotation.id, nextStatus as QuotationStatus);
@@ -772,6 +801,7 @@ export function QuotationsScreen() {
                 setShowSqm(false);
                 setVatRate(numberToInputText(data.company.vatRate) || "15");
                 setLineItems([emptyLineItem(1)]);
+                setCustomFields([]);
                 setFormError("");
                 setShowForm((value) => !value);
               }}
@@ -820,6 +850,7 @@ export function QuotationsScreen() {
               setShowSqm(false);
               setVatRate(numberToInputText(data.company.vatRate) || "15");
               setLineItems([emptyLineItem(1)]);
+              setCustomFields([]);
               setFormError("");
               setShowForm((value) => !value);
             }}
@@ -1040,6 +1071,82 @@ export function QuotationsScreen() {
               />
             </label>
           </div>
+
+          <section className="quotation-custom-fields">
+            <div className="quotation-items-toolbar">
+              <div>
+                <strong>Additional Fields</strong>
+                <span>Optional details shown in the quotation PDF</span>
+              </div>
+              <button
+                className="icon-button"
+                type="button"
+                title="Add quotation field"
+                aria-label="Add quotation field"
+                onClick={() =>
+                  setCustomFields((fields) => [
+                    ...fields,
+                    { id: crypto.randomUUID(), label: "", value: "" },
+                  ])
+                }
+              >
+                <Plus size={16} />
+              </button>
+            </div>
+            {customFields.length ? (
+              <div className="custom-field-list">
+                {customFields.map((field) => (
+                  <div className="custom-field-row" key={field.id}>
+                    <label className="field">
+                      <span>Field name</span>
+                      <input
+                        value={field.label}
+                        placeholder="e.g. Work order number"
+                        onChange={(event) =>
+                          setCustomFields((fields) =>
+                            fields.map((item) =>
+                              item.id === field.id
+                                ? { ...item, label: event.target.value }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                    <label className="field">
+                      <span>Value</span>
+                      <input
+                        value={field.value}
+                        placeholder="Enter value"
+                        onChange={(event) =>
+                          setCustomFields((fields) =>
+                            fields.map((item) =>
+                              item.id === field.id
+                                ? { ...item, value: event.target.value }
+                                : item,
+                            ),
+                          )
+                        }
+                      />
+                    </label>
+                    <button
+                      className="icon-button icon-button--danger"
+                      type="button"
+                      title={`Remove ${field.label || "field"}`}
+                      aria-label={`Remove ${field.label || "field"}`}
+                      onClick={() =>
+                        setCustomFields((fields) =>
+                          fields.filter((item) => item.id !== field.id),
+                        )
+                      }
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+          </section>
 
           <div className="quotation-items-toolbar">
             <div>
@@ -1300,11 +1407,22 @@ export function QuotationsScreen() {
           value={sortBy}
           onChange={(event) => setSortBy(event.target.value)}
         >
+          <option value="recently-modified">Recently modified</option>
           <option value="newest">Newest first</option>
           <option value="oldest">Oldest first</option>
           <option value="price-high">Price high to low</option>
           <option value="price-low">Price low to high</option>
           <option value="company">Company A-Z</option>
+        </select>
+        <select
+          className="select"
+          value={modifiedWithin}
+          onChange={(event) => setModifiedWithin(event.target.value)}
+        >
+          <option value="all">Any modification date</option>
+          <option value="1">Modified today</option>
+          <option value="7">Modified in 7 days</option>
+          <option value="30">Modified in 30 days</option>
         </select>
 
         <button
@@ -1318,7 +1436,8 @@ export function QuotationsScreen() {
             setDateTo("");
             setMinAmount("");
             setMaxAmount("");
-            setSortBy("newest");
+            setSortBy("recently-modified");
+            setModifiedWithin("all");
           }}
         >
           Clear filters
@@ -1397,11 +1516,24 @@ export function QuotationsScreen() {
               <label className="mobile-filter-wide">
                 <span>Sort by</span>
                 <select value={sortBy} onChange={(event) => setSortBy(event.target.value)}>
+                  <option value="recently-modified">Recently modified</option>
                   <option value="newest">Newest first</option>
                   <option value="oldest">Oldest first</option>
                   <option value="price-high">Highest value</option>
                   <option value="price-low">Lowest value</option>
                   <option value="company">Company A-Z</option>
+                </select>
+              </label>
+              <label className="mobile-filter-wide">
+                <span>Modified</span>
+                <select
+                  value={modifiedWithin}
+                  onChange={(event) => setModifiedWithin(event.target.value)}
+                >
+                  <option value="all">Any time</option>
+                  <option value="1">Today</option>
+                  <option value="7">Last 7 days</option>
+                  <option value="30">Last 30 days</option>
                 </select>
               </label>
               <button
@@ -1415,7 +1547,8 @@ export function QuotationsScreen() {
                   setDateTo("");
                   setMinAmount("");
                   setMaxAmount("");
-                  setSortBy("newest");
+                  setSortBy("recently-modified");
+                  setModifiedWithin("all");
                 }}
               >
                 Clear all filters
@@ -1430,7 +1563,7 @@ export function QuotationsScreen() {
               <span>Quotation tracker</span>
               <h2>{filteredQuotations.length} quote{filteredQuotations.length === 1 ? "" : "s"}</h2>
             </div>
-            <small>{sortBy === "newest" ? "Newest first" : "Filtered view"}</small>
+            <small>{sortBy === "recently-modified" ? "Recently modified" : "Filtered view"}</small>
           </header>
 
           {filteredQuotations.length ? (
@@ -1461,10 +1594,7 @@ export function QuotationsScreen() {
                         <span>Status</span>
                         <select
                           value={quotation.status}
-                          disabled={quotation.status === "approved"}
-                          aria-label={quotation.status === "approved"
-                            ? `Approved status for quotation ${quotation.id} is read-only`
-                            : `Change status for quotation ${quotation.id}`}
+                          aria-label={`Change status for quotation ${quotation.id}`}
                           onChange={(event) => void handleStatusChange(quotation, event.target.value)}
                         >
                           {statusOptions.map((item) => (
@@ -1602,10 +1732,7 @@ export function QuotationsScreen() {
                     <span>Status</span>
                     <select
                       className="inline-select"
-                      disabled={quotation.status === "approved"}
-                      aria-label={quotation.status === "approved"
-                        ? `Approved status for quotation ${quotation.id} is read-only`
-                        : `Change status for quotation ${quotation.id}`}
+                      aria-label={`Change status for quotation ${quotation.id}`}
                       value={quotation.status}
                       onChange={(event) =>
                         void handleStatusChange(quotation, event.target.value)
@@ -1773,10 +1900,7 @@ export function QuotationsScreen() {
                       <td>
                         <select
                           className="inline-select status-inline-select"
-                          disabled={quotation.status === "approved"}
-                          aria-label={quotation.status === "approved"
-                            ? `Approved status for quotation ${quotation.id} is read-only`
-                            : `Change status for quotation ${quotation.id}`}
+                          aria-label={`Change status for quotation ${quotation.id}`}
                           value={isEditing ? draft.status : quotation.status}
                           onClick={(event) => event.stopPropagation()}
                           onChange={(event) => {
@@ -1986,10 +2110,7 @@ export function QuotationsScreen() {
                           <span>Status</span>
                           <select
                             className="inline-select mobile-status-select"
-                            disabled={quotation.status === "approved"}
-                            aria-label={quotation.status === "approved"
-                              ? `Approved status for quotation ${quotation.id} is read-only`
-                              : `Change status for quotation ${quotation.id}`}
+                            aria-label={`Change status for quotation ${quotation.id}`}
                             value={quotation.status}
                             onChange={(event) =>
                               void handleStatusChange(

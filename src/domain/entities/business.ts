@@ -6,8 +6,15 @@ export type ProjectBillingStage =
   | "po-done"
   | "payment-pending"
   | "completed";
-export type QuotationStatus = "draft" | "sent" | "approved" | "rejected" | "expired";
+export type QuotationStatus = "draft" | "sent" | "pending-po" | "approved" | "rejected" | "expired";
 export type PaymentStatus = "pending" | "partial" | "po" | "paid" | "overdue" | "cancelled";
+export type ComplaintStatus = "pending" | "in-progress" | "complete";
+
+export interface CustomField {
+  id: string;
+  label: string;
+  value: string;
+}
 
 export interface Client {
   id: string;
@@ -108,6 +115,9 @@ export interface Quotation {
   supplierPhone?: string;
   supplierEmail?: string;
   supplierWebsite?: string;
+  customFields?: CustomField[];
+  createdAt?: string;
+  updatedAt?: string;
   lineItems?: Array<{
     serialNo: number;
     description: string;
@@ -165,6 +175,7 @@ export interface Invoice {
   vatRate?: number;
   vatAmount?: number;
   discountAmount?: number;
+  customFields?: CustomField[];
   lineItems?: Array<{
     id: string;
     description: string;
@@ -182,6 +193,24 @@ export interface Invoice {
   attachmentPath?: string;
   attachmentUrl?: string;
   localAttachmentKey?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Complaint {
+  id: string;
+  business: string;
+  stationName: string;
+  area: string;
+  city: string;
+  description: string;
+  complaintType: string;
+  loggedBy: string;
+  contactPerson: string;
+  status: ComplaintStatus;
+  sourceImageName?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface Workspace {
@@ -219,16 +248,17 @@ export interface BusinessDataSet {
   projects: Project[];
   quotations: Quotation[];
   invoices: Invoice[];
+  complaints: Complaint[];
   trash?: TrashItem[];
 }
 
 export interface TrashItem {
   id: string;
-  collection: "clients" | "projects" | "quotations" | "invoices";
+  collection: "clients" | "projects" | "quotations" | "invoices" | "complaints";
   recordId: string;
   label: string;
   companyName: string;
   deletedAt: string;
   deleteAfter: string;
-  record: Client | Project | Quotation | Invoice;
+  record: Client | Project | Quotation | Invoice | Complaint;
 }

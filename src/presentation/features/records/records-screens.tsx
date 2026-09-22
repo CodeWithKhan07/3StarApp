@@ -615,6 +615,9 @@ export function InvoicesScreen({
   const [company, setCompany] = useState("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [sortBy, setSortBy] = useState("recently-modified");
+  const [modifiedWithin, setModifiedWithin] = useState("all");
+  const [filterReferenceTime] = useState(() => Date.now());
   const [payingInvoice, setPayingInvoice] = useState<Invoice | null>(null);
   const [profitInput, setProfitInput] = useState("");
   const [paymentError, setPaymentError] = useState("");
@@ -629,8 +632,15 @@ export function InvoicesScreen({
     return data.invoices;
   }, [data.invoices, pendingOnly, poOnly]);
   const filtered = useMemo(() => {
+    const modifiedCutoff =
+      modifiedWithin === "all"
+        ? null
+        : filterReferenceTime - Number(modifiedWithin) * 24 * 60 * 60 * 1000;
     return source
       .filter((item) => {
+        const activityTime = new Date(
+          item.updatedAt || item.createdAt || item.invoiceDate || 0,
+        ).getTime();
         return (
           matchesRecordQuery(
             [
@@ -646,19 +656,22 @@ export function InvoicesScreen({
             item.invoiceDate,
             { query, company, dateFrom, dateTo },
           ) &&
-          (status === "all" || item.status === status)
+          (status === "all" || item.status === status) &&
+          (modifiedCutoff === null || activityTime >= modifiedCutoff)
         );
       })
-      .sort(
-        (a, b) =>
-          String(b.invoiceDate || "").localeCompare(
-            String(a.invoiceDate || ""),
-          ) ||
-          String(b.id).localeCompare(String(a.id), undefined, {
-            numeric: true,
-          }),
-      );
-  }, [company, dateFrom, dateTo, query, source, status]);
+      .sort((a, b) => {
+        if (sortBy === "oldest") {
+          return String(a.invoiceDate || "").localeCompare(String(b.invoiceDate || ""));
+        }
+        if (sortBy === "newest") {
+          return String(b.invoiceDate || "").localeCompare(String(a.invoiceDate || ""));
+        }
+        const activity = (item: Invoice) =>
+          new Date(item.updatedAt || item.createdAt || item.invoiceDate || 0).getTime();
+        return activity(b) - activity(a);
+      });
+  }, [company, dateFrom, dateTo, filterReferenceTime, modifiedWithin, query, sortBy, source, status]);
   // Summary values follow the active filters so the figures always describe
   // the records currently visible to the user.
   const total = filtered.reduce((sum, item) => sum + item.amount, 0);
@@ -821,6 +834,25 @@ export function InvoicesScreen({
                 {item.label}
               </option>
             ))}
+          </select>
+          <select
+            className="select"
+            value={sortBy}
+            onChange={(event) => setSortBy(event.target.value)}
+          >
+            <option value="recently-modified">Recently modified</option>
+            <option value="newest">Newest invoice date</option>
+            <option value="oldest">Oldest invoice date</option>
+          </select>
+          <select
+            className="select"
+            value={modifiedWithin}
+            onChange={(event) => setModifiedWithin(event.target.value)}
+          >
+            <option value="all">Any modification date</option>
+            <option value="1">Modified today</option>
+            <option value="7">Modified in 7 days</option>
+            <option value="30">Modified in 30 days</option>
           </select>
         </Toolbar>
         <div className="table-wrap plain-list-wrap">

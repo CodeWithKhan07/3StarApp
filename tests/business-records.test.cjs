@@ -31,6 +31,7 @@ const emptyData = () => ({
   projects: [],
   quotations: [],
   invoices: [],
+  complaints: [],
   trash: [],
 });
 
@@ -65,6 +66,89 @@ test("quotation totals are recalculated from line items", () => {
   assert.equal(quotation.vatAmount, 30);
   assert.equal(quotation.amount, 230);
   assert.match(quotation.serialNumber, /^QSN-/);
+});
+
+test("pending PO is accepted as a quotation workflow status", () => {
+  const quotation = prepareRecordForSave("quotations", {
+    id: "Q-PO-1",
+    issueDate: "2026-07-14",
+    validityDate: "",
+    companyName: "Client A",
+    scopeOfWork: "Awaiting customer PO",
+    amount: 115,
+    status: "pending-po",
+    currency: "SAR",
+    subTotal: 100,
+    vatRate: 15,
+    vatAmount: 15,
+  });
+
+  assert.equal(quotation.status, "pending-po");
+});
+
+test("additional fields persist on existing quotations and invoices", () => {
+  const customFields = [
+    { id: " field-1 ", label: " Site Contact ", value: " Ahmed " },
+    { id: "empty", label: "", value: "Ignored" },
+  ];
+  const quotation = prepareRecordForSave("quotations", {
+    id: "Q-EXISTING",
+    issueDate: "2026-07-14",
+    validityDate: "",
+    companyName: "Client A",
+    scopeOfWork: "Door repair",
+    amount: 115,
+    status: "approved",
+    currency: "SAR",
+    subTotal: 100,
+    vatRate: 15,
+    vatAmount: 15,
+    customFields,
+  });
+  const invoice = prepareRecordForSave("invoices", {
+    id: "INV-EXISTING",
+    companyName: "Client A",
+    project: "Door repair",
+    invoiceDate: "2026-07-14",
+    amount: 115,
+    received: 0,
+    status: "pending",
+    currency: "SAR",
+    subTotal: 100,
+    vatAmount: 15,
+    customFields,
+  });
+
+  assert.deepEqual(quotation.customFields, [
+    { id: "field-1", label: "Site Contact", value: "Ahmed" },
+  ]);
+  assert.deepEqual(invoice.customFields, [
+    { id: "field-1", label: "Site Contact", value: "Ahmed" },
+  ]);
+});
+
+test("complaints are normalized and validate workflow status", () => {
+  const complaint = prepareRecordForSave("complaints", {
+    id: " 3584 ",
+    business: " PE ",
+    stationName: " 2104 (Sharurah II) ",
+    area: " South ",
+    city: " Sharurah ",
+    description: " signage damage need to fix ",
+    complaintType: " Signage ",
+    loggedBy: " jose@example.com ",
+    contactPerson: " 050 779 4722 ",
+    status: "pending",
+    createdAt: "2026-09-22T12:00:00.000Z",
+    updatedAt: "2026-09-22T12:00:00.000Z",
+  });
+
+  assert.equal(complaint.id, "3584");
+  assert.equal(complaint.city, "Sharurah");
+  assert.throws(
+    () => prepareRecordForSave("complaints", { ...complaint, status: "closed" }),
+    /status is invalid/i,
+  );
 });
 
 // Payment state follows money received and rejects impossible overpayments.

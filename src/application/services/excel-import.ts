@@ -126,5 +126,5 @@ export async function parseBusinessWorkbook(file: File, current: BusinessDataSet
   const result = { clients: uniqueBy(clients, (item) => item.companyName), projects: uniqueBy(projects, (item) => item.id), quotations: uniqueBy(quotations, (item) => item.id), invoices: uniqueBy(invoices, (item) => item.id) };
   if (!Object.values(result).some((items) => items.length)) throw new Error("No recognizable client, project, quotation, or invoice table was found. Include descriptive field headers and retry.");
   (Object.keys(result) as EntityName[]).forEach((entity) => { if (!result[entity].length) warnings.push(`No ${entity} records were detected; existing ${entity} will be retained.`); });
-  return { fileName: file.name, company, ...result, warnings, sheetMatches };
+  return { fileName: file.name, company, ...result, complaints: current.complaints, warnings, sheetMatches };
 }

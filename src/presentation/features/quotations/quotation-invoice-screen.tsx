@@ -5,7 +5,7 @@ import {
   parseInvoiceDocument,
   type InvoiceImportDraft,
 } from "@/application/services/invoice-import";
-import type { Invoice, Quotation } from "@/domain/entities/business";
+import type { CustomField, Invoice, Quotation } from "@/domain/entities/business";
 import {
   downloadLocalInvoiceAttachment,
   saveLocalInvoiceAttachment,
@@ -13,6 +13,7 @@ import {
 import { createNextInvoiceId } from "@/lib/record-ids";
 import { routes } from "@/lib/routes";
 import { PageHeader, StatusBadge } from "@/presentation/components/ui";
+import { CustomFieldsEditor } from "@/presentation/components/custom-fields-editor";
 import { money } from "@/presentation/data/sample-data";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
 import {
@@ -178,6 +179,7 @@ export function QuotationInvoiceScreen() {
   const [draft, setDraft] = useState<InvoiceImportDraft | null>(null);
   const [lineItems, setLineItems] = useState<InvoiceLineItem[]>([]);
   const [discountAmount, setDiscountAmount] = useState(0);
+  const [customFields, setCustomFields] = useState<CustomField[]>([]);
   const [reading, setReading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -389,6 +391,7 @@ export function QuotationInvoiceScreen() {
         vatAmount: totals.vatAmount,
         discountAmount,
         lineItems: finalLineItems,
+        customFields,
         attachmentName: file?.name,
         attachmentType: file?.type,
         attachmentSize: file?.size,
@@ -859,6 +862,12 @@ export function QuotationInvoiceScreen() {
                 />
               </label>
             </div>
+
+            <CustomFieldsEditor
+              fields={customFields}
+              onChange={setCustomFields}
+              documentName="invoice"
+            />
           </section>
 
           <section className="card form-section invoice-items-section">

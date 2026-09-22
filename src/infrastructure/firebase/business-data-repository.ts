@@ -14,7 +14,7 @@ export class FirebaseBusinessDataRepository implements BusinessDataRepository {
     const snapshots = await Promise.all(
       // Trash is part of the same snapshot so restore/delete behavior is
       // consistent across devices, not only in one browser cache.
-      (["clients", "projects", "quotations", "invoices", "trash"] as const).map((entity) =>
+      (["clients", "projects", "quotations", "invoices", "complaints", "trash"] as const).map((entity) =>
         getDocs(collection(db, ...base, entity))
       )
     );
@@ -34,12 +34,13 @@ export class FirebaseBusinessDataRepository implements BusinessDataRepository {
     const metadata = profile.data() as { activeBatchId?: string; company?: BusinessDataSet["company"] };
     if (!metadata.activeBatchId || !metadata.company) return null;
     const base = ["businessData", ownerId, "imports", metadata.activeBatchId] as const;
-    const [clients, projects, quotations, invoices, trash] = await Promise.all([
+    const [clients, projects, quotations, invoices, complaints, trash] = await Promise.all([
       getDocs(collection(db, ...base, "clients")), getDocs(collection(db, ...base, "projects")),
       getDocs(collection(db, ...base, "quotations")), getDocs(collection(db, ...base, "invoices")),
+      getDocs(collection(db, ...base, "complaints")),
       getDocs(collection(db, ...base, "trash")),
     ]);
-    return { company: metadata.company, clients: clients.docs.map((item) => item.data()) as BusinessDataSet["clients"], projects: projects.docs.map((item) => item.data()) as BusinessDataSet["projects"], quotations: quotations.docs.map((item) => item.data()) as BusinessDataSet["quotations"], invoices: invoices.docs.map((item) => item.data()) as BusinessDataSet["invoices"], trash: trash.docs.map((item) => item.data()) as NonNullable<BusinessDataSet["trash"]> };
+    return { company: metadata.company, clients: clients.docs.map((item) => item.data()) as BusinessDataSet["clients"], projects: projects.docs.map((item) => item.data()) as BusinessDataSet["projects"], quotations: quotations.docs.map((item) => item.data()) as BusinessDataSet["quotations"], invoices: invoices.docs.map((item) => item.data()) as BusinessDataSet["invoices"], complaints: complaints.docs.map((item) => item.data()) as BusinessDataSet["complaints"], trash: trash.docs.map((item) => item.data()) as NonNullable<BusinessDataSet["trash"]> };
   }
 
   async replace(ownerId: string, data: BusinessDataSet, sourceFile: string) {
@@ -53,7 +54,7 @@ export class FirebaseBusinessDataRepository implements BusinessDataRepository {
     const operations: Array<{ ref: ReturnType<typeof doc>; value: object; merge?: boolean }> = [];
     const base = ["businessData", ownerId, "imports", batchId] as const;
     operations.push({ ref: doc(db, ...base), value: { ownerId, sourceFile, createdAt: new Date().toISOString() } });
-    (["clients", "projects", "quotations", "invoices"] as const).forEach((entity) => data[entity].forEach((record, index) => operations.push({ ref: doc(db, ...base, entity, safeId(record.id, index)), value: clean(record) })));
+    (["clients", "projects", "quotations", "invoices", "complaints"] as const).forEach((entity) => data[entity].forEach((record, index) => operations.push({ ref: doc(db, ...base, entity, safeId(record.id, index)), value: clean(record) })));
     (data.trash || []).forEach((record, index) => operations.push({ ref: doc(db, ...base, "trash", safeId(record.id, index)), value: clean(record) }));
     data.quotations.forEach((quotation) => {
       const id = reservationId(quotation.id || "");

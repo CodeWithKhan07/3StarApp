@@ -1,6 +1,7 @@
 import type {
   BusinessDataSet,
   Client,
+  Complaint,
   Invoice,
   Project,
   Quotation,
@@ -15,13 +16,15 @@ export type CollectionKey =
   | "clients"
   | "projects"
   | "quotations"
-  | "invoices";
+  | "invoices"
+  | "complaints";
 
 export type EntityMap = {
   clients: Client;
   projects: Project;
   quotations: Quotation;
   invoices: Invoice;
+  complaints: Complaint;
 };
 
 const projectStatuses = new Set<Project["status"]>([
@@ -34,6 +37,7 @@ const projectStatuses = new Set<Project["status"]>([
 const quotationStatuses = new Set<Quotation["status"]>([
   "draft",
   "sent",
+  "pending-po",
   "approved",
   "rejected",
   "expired",
@@ -48,6 +52,11 @@ const invoiceStatuses = new Set<Invoice["status"]>([
 ]);
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 const moneyPrecision = 100;
+const complaintStatuses = new Set<Complaint["status"]>([
+  "pending",
+  "in-progress",
+  "complete",
+]);
 
 const roundMoney = (value: number) =>
   Math.round((value + Number.EPSILON) * moneyPrecision) / moneyPrecision;
@@ -234,6 +243,14 @@ function normalizeQuotation(quotation: Quotation): Quotation {
     subTotal,
     vatAmount,
     amount: roundMoney(subTotal + vatAmount),
+    customFields: quotation.customFields
+      ?.map((field) => ({
+        ...field,
+        id: field.id.trim(),
+        label: field.label.trim(),
+        value: field.value.trim(),
+      }))
+      .filter((field) => field.id && field.label && field.value),
   };
 }
 
@@ -361,6 +378,35 @@ function normalizeInvoice(invoice: Invoice): Invoice {
     received,
     profitAllocation,
     status,
+    customFields: invoice.customFields
+      ?.map((field) => ({
+        ...field,
+        id: field.id.trim(),
+        label: field.label.trim(),
+        value: field.value.trim(),
+      }))
+      .filter((field) => field.id && field.label && field.value),
+  };
+}
+
+function normalizeComplaint(complaint: Complaint): Complaint {
+  if (!complaintStatuses.has(complaint.status)) {
+    throw new Error("Complaint status is invalid.");
+  }
+
+  return {
+    ...complaint,
+    id: required(complaint.id, "Complaint number"),
+    business: complaint.business.trim(),
+    stationName: required(complaint.stationName, "Station name"),
+    area: required(complaint.area, "Complaint area"),
+    city: required(complaint.city, "Complaint city"),
+    description: required(complaint.description, "Complaint description"),
+    complaintType: required(complaint.complaintType, "Complaint type"),
+    loggedBy: complaint.loggedBy.trim(),
+    contactPerson: complaint.contactPerson.trim(),
+    createdAt: required(complaint.createdAt, "Complaint creation time"),
+    updatedAt: required(complaint.updatedAt, "Complaint update time"),
   };
 }
 
@@ -374,7 +420,10 @@ export function prepareRecordForSave<TKey extends CollectionKey>(
   if (key === "quotations") {
     return normalizeQuotation(record as Quotation) as EntityMap[TKey];
   }
-  return normalizeInvoice(record as Invoice) as EntityMap[TKey];
+  if (key === "invoices") {
+    return normalizeInvoice(record as Invoice) as EntityMap[TKey];
+  }
+  return normalizeComplaint(record as Complaint) as EntityMap[TKey];
 }
 
 export function recordIdsEqual(
@@ -410,7 +459,9 @@ export function assertUniqueRecordId<TKey extends CollectionKey>(
           ? "Invoice number"
           : key === "projects"
             ? "Project ID"
-            : "Client ID";
+            : key === "complaints"
+              ? "Complaint number"
+              : "Client ID";
     throw new Error(`${label} ${id} is already used.`);
   }
 }

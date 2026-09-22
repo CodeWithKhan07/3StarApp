@@ -27,6 +27,7 @@ export const routes = {
 
   pendingPayments: "/pending-payments",
   pendingPo: "/pending-po",
+  complaints: "/complaints",
 
   statements: "/statements",
   history: "/history",

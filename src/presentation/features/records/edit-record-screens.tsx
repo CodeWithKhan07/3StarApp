@@ -1,10 +1,11 @@
 "use client";
 
-import type { Invoice, Project } from "@/domain/entities/business";
+import type { CustomField, Invoice, Project } from "@/domain/entities/business";
 import { routes } from "@/lib/routes";
 import { PageHeader, StatusBadge } from "@/presentation/components/ui";
+import { CustomFieldsEditor } from "@/presentation/components/custom-fields-editor";
 import { useBusinessData } from "@/presentation/providers/business-data-provider";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Plus, Save, Trash2 } from "lucide-react";
 import { downloadLocalInvoiceAttachment } from "@/infrastructure/local/invoice-attachment";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -476,6 +477,9 @@ export function QuotationEditScreen() {
   const [vatRate, setVatRate] = useState(
     decimalText(record?.vatRate ?? data.company.vatRate) || "15"
   );
+  const [customFields, setCustomFields] = useState<CustomField[]>(
+    record?.customFields || [],
+  );
   if (!record) return <MissingRecord backHref={routes.quotations} />;
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -539,6 +543,7 @@ export function QuotationEditScreen() {
         subTotal,
         vatAmount,
         vatRate: quotationVatRate,
+        customFields,
       });
       router.replace(routes.quotations);
     } catch (e) {
@@ -626,6 +631,75 @@ export function QuotationEditScreen() {
           />
         </label>
       </div>
+      <section className="quotation-custom-fields">
+        <div className="quotation-items-toolbar">
+          <div>
+            <strong>Additional Fields</strong>
+            <span>These appear in the quotation details on the PDF</span>
+          </div>
+          <button
+            className="icon-button"
+            type="button"
+            title="Add quotation field"
+            aria-label="Add quotation field"
+            onClick={() =>
+              setCustomFields((fields) => [
+                ...fields,
+                { id: crypto.randomUUID(), label: "", value: "" },
+              ])
+            }
+          >
+            <Plus size={16} />
+          </button>
+        </div>
+        {customFields.map((field) => (
+          <div className="custom-field-row" key={field.id}>
+            <label className="field">
+              <span>Field name</span>
+              <input
+                value={field.label}
+                onChange={(event) =>
+                  setCustomFields((fields) =>
+                    fields.map((item) =>
+                      item.id === field.id
+                        ? { ...item, label: event.target.value }
+                        : item,
+                    ),
+                  )
+                }
+              />
+            </label>
+            <label className="field">
+              <span>Value</span>
+              <input
+                value={field.value}
+                onChange={(event) =>
+                  setCustomFields((fields) =>
+                    fields.map((item) =>
+                      item.id === field.id
+                        ? { ...item, value: event.target.value }
+                        : item,
+                    ),
+                  )
+                }
+              />
+            </label>
+            <button
+              className="icon-button icon-button--danger"
+              type="button"
+              title={`Remove ${field.label || "field"}`}
+              aria-label={`Remove ${field.label || "field"}`}
+              onClick={() =>
+                setCustomFields((fields) =>
+                  fields.filter((item) => item.id !== field.id),
+                )
+              }
+            >
+              <Trash2 size={16} />
+            </button>
+          </div>
+        ))}
+      </section>
       <div className="table-wrap">
         <table className="data-table project-line-items">
           <thead>
@@ -723,6 +797,9 @@ export function InvoiceEditScreen() {
   const record = data.invoices.find((item) => item.id === id);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [customFields, setCustomFields] = useState<CustomField[]>(
+    record?.customFields || [],
+  );
   if (!record) return <MissingRecord backHref={routes.invoices} />;
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -795,6 +872,7 @@ export function InvoiceEditScreen() {
         vatAmount,
         discountAmount,
         lineItems,
+        customFields,
       });
       router.replace(routes.invoices);
     } catch (e) {
@@ -1034,6 +1112,11 @@ export function InvoiceEditScreen() {
           <textarea name="remarks" defaultValue={record.remarks} />
         </label>
       </div>
+      <CustomFieldsEditor
+        fields={customFields}
+        onChange={setCustomFields}
+        documentName="invoice"
+      />
       <div className="table-wrap">
         <table className="data-table project-line-items">
           <thead>

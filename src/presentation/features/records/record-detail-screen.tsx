@@ -263,6 +263,9 @@ function quotationDetail(record: Quotation): RecordDetail {
           field("Supplier phone", record.supplierPhone),
           field("Supplier email", record.supplierEmail),
           field("Supplier website", record.supplierWebsite),
+          ...(record.customFields || []).map((item) =>
+            field(item.label, item.value),
+          ),
           field("Terms and conditions", record.termsAndConditions),
           field("Remarks", record.remarks),
         ],
@@ -342,6 +345,9 @@ function invoiceDetail(record: Invoice): RecordDetail {
           field("Supplier VAT number", record.supplierVatNumber),
           field("Supplier phone", record.supplierPhone),
           field("Supplier email", record.supplierEmail),
+          ...(record.customFields || []).map((item) =>
+            field(item.label, item.value),
+          ),
         ],
       },
       {

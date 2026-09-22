@@ -75,6 +75,8 @@ interface BusinessDataContextValue {
 
   emptyTrash: () => Promise<void>;
 
+  importComplaints: (records: EntityMap["complaints"][]) => Promise<void>;
+
   patchRecord: <TKey extends CollectionKey>(
     key: TKey,
     id: string,
@@ -144,6 +146,7 @@ function normalizeCompanyEmail(value?: string) {
 
 const initialData: BusinessDataSet = {
   ...importedInitialData,
+  complaints: [],
   trash: [],
   quotations: importedInitialData.quotations.map((quotation) => ({
     ...quotation,
@@ -184,7 +187,7 @@ function preserveCompanyProfile(next: BusinessDataSet): BusinessDataSet {
       vatRate: quotation.vatRate ?? company.vatRate ?? fallback.vatRate,
     };
 
-    if (quotation.status === "approved" && !existingProject) {
+    if (["approved", "pending-po"].includes(quotation.status) && !existingProject) {
       projects.unshift(
         buildProjectFromQuotation(
           linkedQuotation,
@@ -242,6 +245,7 @@ function preserveCompanyProfile(next: BusinessDataSet): BusinessDataSet {
     projects: lifecycleProjects,
     quotations,
     invoices,
+    complaints: next.complaints || [],
     company: {
       businessName: keep(company.businessName, fallback.businessName),
       legalCompanyName: keep(
@@ -295,6 +299,11 @@ function getRecordLabel(key: CollectionKey, record: EntityMap[CollectionKey]) {
     return invoice.id || invoice.companyName || "Invoice";
   }
 
+  if (key === "complaints") {
+    const complaint = record as EntityMap["complaints"];
+    return complaint.id || complaint.stationName || "Complaint";
+  }
+
   const client = record as EntityMap["clients"];
   return client.companyName || client.id || "Client";
 }
@@ -302,7 +311,29 @@ function getRecordLabel(key: CollectionKey, record: EntityMap[CollectionKey]) {
 function getRecordCompany(key: CollectionKey, record: EntityMap[CollectionKey]) {
   if (key === "projects") return (record as EntityMap["projects"]).company || "";
   if (key === "clients") return (record as EntityMap["clients"]).companyName || "";
+  if (key === "complaints") return (record as EntityMap["complaints"]).business || "";
   return (record as EntityMap["quotations"] | EntityMap["invoices"]).companyName || "";
+}
+
+function withAuditTimestamps<TKey extends CollectionKey>(
+  key: TKey,
+  record: EntityMap[TKey],
+  createdAt?: string,
+): EntityMap[TKey] {
+  if (!(["quotations", "invoices", "complaints"] as CollectionKey[]).includes(key)) {
+    return record;
+  }
+
+  const now = new Date().toISOString();
+  const value = record as EntityMap[TKey] & {
+    createdAt?: string;
+    updatedAt?: string;
+  };
+  return {
+    ...value,
+    createdAt: value.createdAt || createdAt || now,
+    updatedAt: now,
+  } as EntityMap[TKey];
 }
 
 function buildProjectFromQuotation(
@@ -321,7 +352,7 @@ function buildProjectFromQuotation(
     startDate: today(),
     expectedCompletion: "",
     completion: 0,
-    billingStage: "ongoing",
+    billingStage: quotation.status === "pending-po" ? "pending-po" : "ongoing",
     status: "in-progress",
     priority: "medium",
   };
@@ -622,7 +653,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
           lifecycleProjectIds.push(projectId);
           const linkedQuotation = { ...serialized, linkedProjectId: projectId };
 
-          if (serialized.status === "approved" && !existingProject) {
+          if (["approved", "pending-po"].includes(serialized.status) && !existingProject) {
             linkedProjects.unshift(
               prepareRecordForSave(
                 "projects",
@@ -644,6 +675,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
           projects: linkedProjects,
           quotations: linkedQuotations,
           invoices: parsed.invoices.length ? parsed.invoices : current.invoices,
+          complaints: current.complaints,
           trash: current.trash || [],
         };
       });
@@ -655,7 +687,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
 
   const createRecord = useCallback(
     async <TKey extends CollectionKey>(key: TKey, record: EntityMap[TKey]) => {
-      const prepared = prepareRecordForSave(key, record);
+      const prepared = prepareRecordForSave(key, withAuditTimestamps(key, record));
       commitMutation(`${key}-create`, (current) => {
         assertUniqueRecordId(current, key, prepared.id);
         const linkedProjectId =
@@ -684,14 +716,38 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
     [commitMutation],
   );
 
+  const importComplaints = useCallback(
+    async (records: EntityMap["complaints"][]) => {
+      if (!records.length) return;
+      const prepared = records.map((record) =>
+        prepareRecordForSave(
+          "complaints",
+          withAuditTimestamps("complaints", record),
+        ),
+      );
+      commitMutation("complaints-import", (current) => {
+        const incomingIds = new Set(prepared.map((item) => item.id.trim()));
+        const existing = current.complaints.filter(
+          (item) => !incomingIds.has(item.id.trim()),
+        );
+        return { ...current, complaints: [...prepared, ...existing] };
+      });
+    },
+    [commitMutation],
+  );
+
   const updateRecord = useCallback(
     async <TKey extends CollectionKey>(key: TKey, record: EntityMap[TKey]) => {
-      const prepared = prepareRecordForSave(key, record);
       commitMutation(`${key}-update`, (current) => {
-        const exists = current[key].some((item) =>
-          recordIdsEqual(key, item.id, prepared.id),
+        const existing = current[key].find((item) =>
+          recordIdsEqual(key, item.id, record.id),
         );
-        if (!exists) throw new Error("Record not found.");
+        if (!existing) throw new Error("Record not found.");
+        const existingCreatedAt = (existing as { createdAt?: string }).createdAt;
+        const prepared = prepareRecordForSave(
+          key,
+          withAuditTimestamps(key, record, existingCreatedAt),
+        );
         assertUniqueRecordId(current, key, prepared.id, prepared.id);
 
         return {
@@ -723,11 +779,18 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
           recordIdsEqual(key, item.id, id),
         );
         if (!existing) throw new Error("Record not found.");
-        const prepared = prepareRecordForSave(key, {
-          ...existing,
-          ...patch,
-          id: existing.id,
-        } as EntityMap[TKey]);
+        const prepared = prepareRecordForSave(
+          key,
+          withAuditTimestamps(
+            key,
+            {
+              ...existing,
+              ...patch,
+              id: existing.id,
+            } as EntityMap[TKey],
+            (existing as { createdAt?: string }).createdAt,
+          ),
+        );
 
         return {
           ...current,
@@ -848,10 +911,13 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
 
   const createQuotation = useCallback(
     async (quotation: EntityMap["quotations"]) => {
-      const prepared = prepareRecordForSave("quotations", {
-        ...quotation,
-        serialNumber: quotation.serialNumber || createQuotationSerial(),
-      });
+      const prepared = prepareRecordForSave(
+        "quotations",
+        withAuditTimestamps("quotations", {
+          ...quotation,
+          serialNumber: quotation.serialNumber || createQuotationSerial(),
+        }),
+      );
       const existingIds = dataRef.current.quotations.map((item) => item.id);
       assertUniqueRecordId(dataRef.current, "quotations", prepared.id);
 
@@ -881,7 +947,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
             linkedProjectId: projectId,
           };
           const project =
-            prepared.status === "approved"
+            ["approved", "pending-po"].includes(prepared.status)
               ? prepareRecordForSave(
                   "projects",
                   buildProjectFromQuotation(
@@ -1003,7 +1069,10 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
         status: "pending",
         remarks: draft.remarks || "",
         };
-        const prepared = prepareRecordForSave("invoices", invoice);
+        const prepared = prepareRecordForSave(
+          "invoices",
+          withAuditTimestamps("invoices", invoice),
+        );
         assertUniqueRecordId(current, "invoices", prepared.id);
         return {
           ...current,
@@ -1040,15 +1109,22 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
         }
 
         const paymentDate = today();
-        const updatedInvoice = prepareRecordForSave("invoices", {
-          ...invoice,
-          received: invoice.amount,
-          profitAmount,
-          profitRecordedAt: paymentDate,
-          profitAllocation: undefined,
-          status: "paid",
-          paymentDate,
-        });
+        const updatedInvoice = prepareRecordForSave(
+          "invoices",
+          withAuditTimestamps(
+            "invoices",
+            {
+              ...invoice,
+              received: invoice.amount,
+              profitAmount,
+              profitRecordedAt: paymentDate,
+              profitAllocation: undefined,
+              status: "paid",
+              paymentDate,
+            },
+            invoice.createdAt,
+          ),
+        );
         const linkedProject = current.projects.find((project) => {
           if (invoice.linkedProjectId) {
             return project.id === invoice.linkedProjectId;
@@ -1110,25 +1186,25 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
           recordIdsEqual("quotations", item.id, id),
         );
         if (!quotation) throw new Error("Quotation not found.");
-        if (quotation.status === "approved" && status !== "approved") {
-          throw new Error("Approved quotation status is read-only.");
-        }
-
         const projectId =
           quotation.linkedProjectId ||
           createNextProjectId([
             ...current.projects.map((project) => project.id),
             ...current.quotations.map((item) => item.linkedProjectId || ""),
           ]);
-        const updatedQuotation = prepareRecordForSave("quotations", {
-          ...quotation,
-          linkedProjectId: projectId,
-          status,
-        });
+        const updatedQuotation = prepareRecordForSave(
+          "quotations",
+          withAuditTimestamps(
+            "quotations",
+            { ...quotation, linkedProjectId: projectId, status },
+            quotation.createdAt,
+          ),
+        );
         const projectExists = current.projects.some(
           (project) => project.id === projectId,
         );
-        const shouldCreateProject = status === "approved" && !projectExists;
+        const shouldCreateProject =
+          ["approved", "pending-po"].includes(String(status)) && !projectExists;
         const project = shouldCreateProject
           ? prepareRecordForSave(
               "projects",
@@ -1145,7 +1221,21 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
           quotations: current.quotations.map((item) =>
             recordIdsEqual("quotations", item.id, id) ? updatedQuotation : item,
           ),
-          projects: project ? [project, ...current.projects] : current.projects,
+          projects: project
+            ? [project, ...current.projects]
+            : projectExists
+              ? current.projects.map((item) =>
+                  item.id === projectId
+                    ? prepareRecordForSave("projects", {
+                        ...item,
+                        status: "in-progress",
+                        billingStage:
+                          status === "pending-po" ? "pending-po" : "ongoing",
+                        workCompleted: false,
+                      })
+                    : item,
+                )
+              : current.projects,
         };
       });
     },
@@ -1309,6 +1399,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       restoreTrashItem,
       permanentlyDeleteTrashItem,
       emptyTrash,
+      importComplaints,
       patchRecord,
 
       createProject,
@@ -1338,6 +1429,7 @@ export function BusinessDataProvider({ children }: { children: ReactNode }) {
       deleteRecord,
       forceSync,
       importFile,
+      importComplaints,
       lastError,
       loading,
       patchRecord,

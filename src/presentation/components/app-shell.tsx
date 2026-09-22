@@ -11,6 +11,7 @@ import {
   Bell,
   BriefcaseBusiness,
   CheckCircle2,
+  ClipboardList,
   ChevronDown,
   CircleDollarSign,
   FileBarChart,
@@ -56,6 +57,7 @@ const navGroups = [
     label: "Operations",
     items: [
       ["Projects", routes.projects, BriefcaseBusiness],
+      ["Complaints", routes.complaints, ClipboardList],
       ["Completed Projects", routes.completedProjects, CheckCircle2],
     ],
   },

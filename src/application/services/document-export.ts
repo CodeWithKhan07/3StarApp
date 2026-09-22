@@ -128,6 +128,37 @@ async function finishPrint(popup: Window, html: string) {
       ),
     );
   }
+  await popup.document.fonts.ready;
+  await new Promise<void>((resolve) =>
+    popup.requestAnimationFrame(() => resolve()),
+  );
+
+  for (const page of popup.document.querySelectorAll<HTMLElement>(
+    '[data-print-layout="invoice"]',
+  )) {
+    const content = page.querySelector<HTMLElement>("[data-invoice-content]");
+    const footer = page.querySelector<HTMLElement>("[data-invoice-footer]");
+    if (!content || !footer) continue;
+
+    page.removeAttribute("data-single-page");
+    const style = popup.getComputedStyle(page);
+    // The element can grow past its min-height, so derive the fixed A4 height
+    // from its rendered 210 mm width instead of using clientHeight.
+    const a4Height = page.getBoundingClientRect().width * (297 / 210);
+    const availableHeight =
+      a4Height -
+      Number.parseFloat(style.paddingTop) -
+      Number.parseFloat(style.paddingBottom);
+    const requiredHeight = content.scrollHeight + footer.scrollHeight;
+
+    if (requiredHeight <= availableHeight + 1) {
+      page.dataset.singlePage = "true";
+    }
+  }
+
+  await new Promise<void>((resolve) =>
+    popup.requestAnimationFrame(() => resolve()),
+  );
   popup.focus();
   popup.print();
 }
@@ -190,8 +221,6 @@ export async function exportInvoicePdf(
         return `<tr><td class="c-index">${index + 1}</td><td class="c-desc"><div class="line-description">${escapeHtml(item.description)}</div></td><td class="c-qty">${amount(item.quantity).replace(/\.00$/, "")}${item.unitCode ? ` ${escapeHtml(item.unitCode)}` : ""}</td><td class="c-rate">${amount(item.unitPrice)}</td><td class="c-taxable">${amount(item.amount)}</td><td class="c-tax-rate">${amount(lineVatRate)}</td><td class="c-tax">${amount(lineVat)}</td><td class="c-amount">${amount(item.amount)}</td></tr>`;
       })
       .join("");
-    const itemRowPadding =
-      lines.length > 4 ? 1.4 : lines.length > 2 ? 2.2 : 3.2;
     const supplierLegalName =
       invoice.supplierLegalName ||
       company.legalCompanyName ||
@@ -205,61 +234,60 @@ export async function exportInvoicePdf(
     const supplierEmail = companyEmail(invoice.supplierEmail || company.email);
     const notes =
       invoice.notes || invoice.remarks || "Thanks for your business.";
+    const customMetaRows = (invoice.customFields || [])
+      .filter((field) => field.label.trim() && field.value.trim())
+      .map(
+        (field) =>
+          `<span>${escapeHtml(field.label)} :</span><b>${escapeHtml(field.value)}</b>`,
+      )
+      .join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Invoice ${escapeHtml(invoice.id)}</title><style>${sharedCss}
-      /* ── Invoice wrapper: use CSS table layout so footer stays with content ── */
-      .invoice{position:relative;padding:11mm 11.5mm 9mm;font-size:9pt;line-height:1.25;color:#202020;display:table;width:100%;table-layout:fixed}
-      /* Body = table-row-group: holds header + items, breaks across pages naturally */
-      .invoice-body{display:table-row-group}
-      /* Footer = table-footer-group: browser keeps it on last page of the table */
-      .invoice-footer-wrap{display:table-footer-group}
-      /* Inner cell wrappers needed for display:table-* children */
-      .invoice-body-cell,.invoice-footer-cell{display:table-cell;width:100%;vertical-align:top}
+      .invoice{position:relative;padding:11mm 11.5mm 9mm;font-size:9pt;line-height:1.25;color:#202020}
+      .invoice-content,.invoice-footer-wrap{width:100%}
+      .invoice-footer-wrap{display:flow-root;break-inside:avoid;page-break-inside:avoid}
+      .invoice[data-single-page="true"] .invoice-footer-wrap{position:absolute;left:11.5mm;right:11.5mm;bottom:9mm;width:auto}
       /* Header block should not split across pages */
       .invoice-header{break-inside:avoid;page-break-inside:avoid}
       .top{display:grid;grid-template-columns:1fr 62mm;min-height:48mm}
       .logo{width:60mm;height:45mm;object-fit:contain}
       .title{text-align:right}.title h1{margin:0 0 7mm;color:#333;font-size:28pt;font-weight:400;line-height:1;letter-spacing:0}.title .number{display:block;font-size:7.2pt;color:#222;margin-bottom:7.5mm}.title p{margin:0 0 1.5mm;color:#222}.title strong{display:block;font-size:12pt;font-weight:700}
-      .seller{margin-top:-6mm;margin-bottom:13mm;max-width:95mm;font-size:9pt;line-height:1.5;word-break:break-word;overflow-wrap:anywhere}.seller b{display:block;font-size:10pt;font-weight:400;line-height:1.35;overflow-wrap:anywhere;word-break:break-word}
-      .parties{display:grid;grid-template-columns:1fr 65mm;gap:18mm;margin-bottom:10mm}.bill h3{font-size:10pt;font-weight:400;margin:0 0 4mm}.bill p{margin:0;font-size:9pt;line-height:1.5;word-break:break-word;overflow-wrap:anywhere}
+      .seller{margin-top:-6mm;margin-bottom:9mm;max-width:95mm;font-size:9pt;line-height:1.5;word-break:break-word;overflow-wrap:anywhere}.seller b{display:block;font-size:10pt;font-weight:400;line-height:1.35;overflow-wrap:anywhere;word-break:break-word}
+      .parties{display:grid;grid-template-columns:1fr 65mm;gap:18mm;margin-bottom:6mm}.bill h3{font-size:10pt;font-weight:400;margin:0 0 4mm}.bill p{margin:0;font-size:9pt;line-height:1.5;word-break:break-word;overflow-wrap:anywhere}
       .meta{display:grid;grid-template-columns:29mm 1fr;gap:3.9mm 5mm;font-size:9pt;align-content:start}.meta span{text-align:right;color:#222;font-size:10pt}.meta b{font-size:9pt;font-weight:400;text-align:right;word-break:break-word;overflow-wrap:anywhere}
-      .subject{margin:0 0 5mm;font-size:9pt;word-break:break-word;overflow-wrap:anywhere}.subject b{display:block;margin-top:5mm;font-size:9pt;font-weight:400;word-break:break-word;overflow-wrap:anywhere}
+      .subject{margin:0 0 3mm;font-size:9pt;word-break:break-word;overflow-wrap:anywhere}.subject b{display:block;margin-top:2mm;font-size:9pt;font-weight:400;word-break:break-word;overflow-wrap:anywhere}
       /* Items table: rows break across pages, thead repeats */
       .items{width:100%;border-collapse:collapse;table-layout:fixed;font-size:9pt}.items thead{display:table-header-group}.items tbody{break-inside:auto;page-break-inside:auto}.items tr{break-inside:avoid;page-break-inside:avoid}
       .items th{background:#262a2d;color:#fff;border-bottom:1px solid #262a2d;font-weight:400;text-align:center;padding:3.7mm 1.2mm;line-height:1.15;overflow-wrap:anywhere;word-break:break-word}
-      .items td{border-bottom:.25mm solid #d7d7d7;padding:${itemRowPadding}mm 1.2mm;text-align:center;vertical-align:top;overflow-wrap:anywhere;word-break:break-word}
+      .items td{border-bottom:.25mm solid #d7d7d7;padding:2mm 1.2mm;text-align:center;vertical-align:top;overflow-wrap:anywhere;word-break:break-word}
       .items .c-index{width:8mm}.items .c-desc{width:58mm;text-align:left}.items .c-qty{width:15mm;white-space:nowrap}.items .c-rate{width:20mm;white-space:nowrap}.items .c-taxable{width:24mm;white-space:nowrap}.items .c-tax-rate{width:18mm;white-space:nowrap}.items .c-tax{width:19mm;white-space:nowrap}.items .c-amount{width:25mm;white-space:nowrap}
       .line-description{display:block;white-space:pre-wrap;word-break:break-word;overflow-wrap:anywhere;max-width:100%}
       /* Totals block: atomic — never splits mid-total */
-      .totals{width:70mm;margin:7mm 0 0 auto;font-size:9pt;break-inside:avoid;page-break-inside:avoid}
-      .total-line{display:grid;grid-template-columns:1fr 28mm;gap:12mm;padding:3.3mm 0;border-bottom:.25mm solid #e3e3e3}.total-line span{text-align:right}.total-line b{text-align:right;font-weight:400}.grand{font-weight:700}.grand b{font-weight:700}
+      .totals{width:70mm;margin:5mm 0 0 auto;font-size:9pt;break-inside:avoid;page-break-inside:avoid}
+      .total-line{display:grid;grid-template-columns:1fr 28mm;gap:12mm;padding:2.6mm 0;border-bottom:.25mm solid #e3e3e3}.total-line span{text-align:right}.total-line b{text-align:right;font-weight:400}.grand{font-weight:700}.grand b{font-weight:700}
       /* Lower section (QR + notes): atomic block */
-      .invoice-lower{display:grid;grid-template-columns:1fr 70mm;gap:18mm;align-items:start;margin-top:8mm;break-inside:avoid;page-break-inside:avoid}
+      .invoice-lower{display:grid;grid-template-columns:1fr 70mm;gap:18mm;align-items:start;margin-top:4mm;break-inside:avoid;page-break-inside:avoid}
       .notes{max-width:76mm;font-size:7pt;line-height:1.28;word-break:break-word;overflow-wrap:anywhere}.notes h3{margin:0 0 2mm;font-size:10pt;font-weight:400}.notes p{margin:0 0 1.8mm;overflow-wrap:anywhere;word-break:break-word}
       .zatca{padding:0 2mm 3mm;text-align:center;color:#333;font-size:8pt}.zatca p{margin:0;line-height:1.35;overflow-wrap:anywhere;word-break:break-word}
       .qr{width:32mm;height:32mm;image-rendering:pixelated;margin:0 auto 2.5mm;display:block}
       /* ── Print overrides ── */
       @media print{
         html,body{height:auto;overflow:visible;margin:0}
-        .page{min-height:0;break-after:auto}
-        .invoice{min-height:0;height:auto;overflow:visible;break-after:auto;display:table;width:100%;table-layout:fixed}
-        .invoice-body{display:table-row-group}
-        .invoice-footer-wrap{display:table-footer-group}
-        .invoice-body-cell,.invoice-footer-cell{display:table-cell;width:100%;vertical-align:top}
-        .items td{padding:2mm 1.2mm}
+        .page{break-after:auto}
+        .invoice{height:auto;overflow:visible;break-after:auto}
         .items thead{display:table-header-group}
       }
-      </style></head><body><main class="page invoice">
-      <div class="invoice-body"><div class="invoice-body-cell">
+      </style></head><body><main class="page invoice" data-print-layout="invoice">
+      <div class="invoice-content" data-invoice-content>
       <section class="invoice-header"><section class="top"><div><img class="logo" src="${quotationLogo.src}" alt="3 Stars"></div><div class="title"><h1>TAX INVOICE</h1><span class="number">#${escapeHtml(invoice.id)}</span><p>Balance Due</p><strong>${escapeHtml(currency)}${amount(balanceDue)}</strong></div></section>
       <section class="seller"><b>${escapeHtml(supplierLegalName)}</b>${supplierName && supplierName !== supplierLegalName ? `<b>${escapeHtml(supplierName)}</b>` : ""}<br>${escapeHtml(supplierAddress)}<div style="display:grid;grid-template-columns:max-content 3mm max-content;line-height:1.5"><span>CR No.</span><span>:</span><span>TRN${escapeHtml(supplierCr)}</span><span>VAT No.</span><span>:</span><span>${escapeHtml(supplierVat)}</span></div></section>
-      <section class="parties"><div class="bill"><h3>Bill To</h3><p><b>${escapeHtml(invoice.companyName)}</b><br>${escapeHtml(invoice.customerAddress || "")}${invoice.customerAddress ? "<br>" : ""}${invoice.customerVatNumber ? `TRN ${escapeHtml(invoice.customerVatNumber)}` : ""}</p></div><div class="meta"><span>Invoice Date :</span><b>${displayDate(invoice.invoiceDate)}</b><span>Terms :</span><b>${escapeHtml(invoice.paymentTerms || "Due on Receipt")}</b><span>Due Date :</span><b>${displayDate(invoice.dueDate || invoice.invoiceDate)}</b><span>P.O.# :</span><b>${escapeHtml(invoice.purchaseOrderNumber || "")}</b><span>VAT No. :</span><b>${escapeHtml(invoice.customerVatNumber || "")}</b></div></section>
+      <section class="parties"><div class="bill"><h3>Bill To</h3><p><b>${escapeHtml(invoice.companyName)}</b><br>${escapeHtml(invoice.customerAddress || "")}${invoice.customerAddress ? "<br>" : ""}${invoice.customerVatNumber ? `TRN ${escapeHtml(invoice.customerVatNumber)}` : ""}</p></div><div class="meta"><span>Invoice Date :</span><b>${displayDate(invoice.invoiceDate)}</b><span>Terms :</span><b>${escapeHtml(invoice.paymentTerms || "Due on Receipt")}</b><span>Due Date :</span><b>${displayDate(invoice.dueDate || invoice.invoiceDate)}</b><span>P.O.# :</span><b>${escapeHtml(invoice.purchaseOrderNumber || "")}</b><span>VAT No. :</span><b>${escapeHtml(invoice.customerVatNumber || "")}</b>${customMetaRows}</div></section>
       <section class="subject">Subject :<b>${escapeHtml(invoice.project || invoice.companyName)}</b></section></section>
       <table class="items"><thead><tr><th class="c-index">#</th><th class="c-desc">Item &amp; Description</th><th class="c-qty">Qty</th><th class="c-rate">Rate</th><th class="c-taxable">Taxable<br>Amount</th><th class="c-tax-rate">Tax %</th><th class="c-tax">Tax</th><th class="c-amount">Amount</th></tr></thead><tbody>${rows}</tbody></table>
-      </div></div>
-      <div class="invoice-footer-wrap"><div class="invoice-footer-cell">
       <section class="totals"><div class="total-line"><span>Sub Total</span><b>${amount(subtotal)}</b></div><div class="total-line"><span>Total Taxable Amount</span><b>${amount(subtotal)}</b></div><div class="total-line"><span>VAT (${amount(effectiveVatRate).replace(/\.00$/, "")}%)</span><b>${amount(vat)}</b></div><div class="total-line grand"><span>Total</span><b>${escapeHtml(currency)}${amount(total)}</b></div></section>
+      </div>
+      <div class="invoice-footer-wrap" data-invoice-footer>
       <section class="invoice-lower"><div class="zatca"><img class="qr" src="${qr}" alt="ZATCA QR"><p>This QR code has been generated as per ZATCA's regulations.</p></div><div class="notes"><h3>Notes</h3><p>${escapeHtml(notes)}</p>${supplierName ? `<p style="font-size:8.3pt;font-weight:600;line-height:1.4;margin-bottom:1.4mm;overflow-wrap:anywhere">${escapeHtml(supplierName)}</p>` : ""}${supplierEmail ? `<p style="font-size:8.3pt;font-weight:600;line-height:1.4;margin-bottom:1.4mm;overflow-wrap:anywhere">${escapeHtml(supplierEmail)}</p>` : ""}${supplierPhone ? `<p style="font-size:8.3pt;font-weight:600;line-height:1.4;margin-bottom:1.4mm;overflow-wrap:anywhere">${escapeHtml(supplierPhone)}</p>` : ""}</div></section>
-      </div></div>
+      </div>
     </main></body></html>`;
 
     await finishPrint(popup, html);
@@ -315,6 +343,13 @@ export async function exportQuotationPdf(
       .join("");
     const sqmHeader = showSqm ? `<th class="c-sqm">SQM</th>` : "";
     const sqmTableClass = showSqm ? " items--sqm" : "";
+    const customRows = (quotation.customFields || [])
+      .filter((field) => field.label.trim() && field.value.trim())
+      .map(
+        (field) =>
+          `<tr><td>${escapeHtml(field.label)}</td><td>${escapeHtml(field.value)}</td></tr>`,
+      )
+      .join("");
     const html = `<!doctype html><html><head><meta charset="utf-8"><title>Quotation ${escapeHtml(quotation.id)}</title><style>${sharedCss}
       body{background:#fff}.quote-page{position:relative;width:210mm;height:297mm;padding:12.35mm 13.75mm 10mm;font-family:Arial,Helvetica,sans-serif;color:#252525;overflow:hidden}.quote{width:171.8mm;margin:0 auto}.quote-head{height:46mm;display:flex;align-items:center;justify-content:center;background:#fff}.quote-logo{width:60mm;height:45mm;object-fit:contain}.band{background:#1d1d1d;color:#fff;text-align:center}.company-band{padding:2.7mm 2mm 1.55mm;font-size:16pt;line-height:1.05;font-weight:400}.legal-band{background:#414141;color:#caa740;padding:1.55mm 2mm 1.45mm;font-size:11.5pt;line-height:1}.contact-grid{display:grid;grid-template-columns:1fr 1fr;background:#fbf4e0;border-bottom:1.55mm solid #bd961e;color:#2b2b2b;font-size:10.4pt;line-height:1}.contact-grid div{height:5.15mm;padding:1.05mm 5mm 0;border-bottom:.25mm solid #c9c9c9}.contact-grid div:nth-child(odd){text-align:left}.contact-grid div:nth-child(even){text-align:left;padding-left:14mm;padding-right:5mm}.title-band{border-bottom:1.45mm solid #bd961e;padding:3.9mm 0 3.1mm;color:#caa740;font-size:18pt;letter-spacing:8px;font-weight:400;line-height:1}.details-title{height:7mm;padding:2.15mm 0 0;font-size:10.6pt;letter-spacing:.2px;line-height:1}.details{display:grid;grid-template-columns:111.5mm 60.3mm;border-bottom:1.5mm solid #bd961e}.detail-table{border-collapse:collapse;width:100%;table-layout:fixed;font-size:10.35pt}.detail-table td{height:6.8mm;border:.3mm solid #d0d0d0;padding:0 1.7mm;text-align:center;vertical-align:middle;line-height:1.05}.detail-table td:first-child{width:34mm;background:#505050;color:#fff;text-align:center;font-size:9.4pt;line-height:1;white-space:nowrap;overflow:visible}.qrbox{display:flex;align-items:center;justify-content:center}.qr-crop{width:28.7mm;height:28.7mm;overflow:hidden;background:#fff}.qr-crop img{display:block;width:34mm;height:34.7mm;margin:-3.1mm 0 0 -2.65mm;object-fit:cover}.items{width:100%;border-collapse:collapse;table-layout:fixed;font-size:10pt}.items th{background:#232323;color:#caa740;font-weight:400;border:.3mm solid #a7a7a7;border-top:0;padding:2mm 1.2mm;line-height:1.18}.items td{border:.3mm solid #d0d0d0;padding:2.2mm 1.2mm;text-align:center;vertical-align:middle;line-height:1.32}.items tbody tr:nth-child(even){background:#fbf8ef}.items .c-serial{width:22mm}.items .c-desc{width:87mm}.items.items--sqm .c-desc{width:71mm}.items td.c-desc{text-align:center}.items .c-qty{width:14mm}.items .c-sqm{width:16mm}.items .c-price{width:21mm}.items .c-amount{width:27.8mm}.totals{display:grid;grid-template-columns:1fr 28.1mm;background:#fbf4e0;margin-left:0;font-size:10.4pt}.total-row{display:contents}.total-label,.total-value{border:.3mm solid #d0d0d0;padding:1.8mm 2mm;text-align:right}.total-value{text-align:center;background:#fff}.grand-label{background:#1d1d1d;color:#caa740;font-size:12pt}.grand-value{background:#caa740;color:#111;font-size:12pt}.footer-main{margin-top:3.5mm;padding:2.4mm 2mm;background:#1d1d1d;color:#fff;text-align:center;font-size:10.1pt}.footer-contact{display:flex;align-items:center;justify-content:center;gap:3mm;background:#fbf4e0;padding:2mm 2mm 1.8mm;font-size:8.5pt}.footer-special{padding-top:2.3mm;text-align:center;color:#555;font-size:7.6pt}.print-foot{position:absolute;left:12mm;right:12mm;bottom:8mm;display:grid;grid-template-columns:1fr 1fr 1fr;font-size:7.5pt}.print-foot span:nth-child(2){text-align:center}.print-foot span:nth-child(3){text-align:right}@media print{.quote-page{padding:12.35mm 13.75mm 10mm}.page{break-after:auto}}</style></head><body><main class="page quote-page"><section class="quote">
       <style>.quote-page{height:auto;min-height:297mm;overflow:visible;padding-bottom:16mm}.items{break-inside:auto;page-break-inside:auto}.items thead{display:table-header-group}.items tbody{break-inside:auto;page-break-inside:auto}.items tr{break-inside:avoid;page-break-inside:avoid}.items td{min-width:0;vertical-align:top;overflow:hidden}.items td.c-desc{max-width:0;white-space:normal}.line-description{display:block;width:100%;max-width:100%;white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;hyphens:none}.items th{word-break:normal;overflow-wrap:break-word}.items td:not(.c-desc){white-space:nowrap}.totals,.footer-main,.footer-contact,.footer-special{break-inside:avoid;page-break-inside:avoid}@media print{html,body{height:auto;overflow:visible}.quote-page{height:auto;min-height:0;overflow:visible}.items thead{display:table-header-group}}</style>
@@ -324,7 +359,7 @@ export async function exportQuotationPdf(
       <div class="contact-grid"><div>CR No.: ${escapeHtml(company.crNumber)}</div><div>VAT No.: ${escapeHtml(company.vatNumber)}</div><div>City: ${escapeHtml(company.city)}, ${escapeHtml(company.country)}</div><div>WhatsApp: ${escapeHtml(company.phone)}</div></div>
       <div class="band title-band">◆ QUOTATION ◆</div>
       <div class="band details-title">QUOTATION DETAILS</div>
-      <div class="details"><table class="detail-table"><tbody><tr><td>Date</td><td>${escapeHtml(quoteDate)}</td></tr><tr><td>Quotation No.</td><td>${escapeHtml(quotation.id)}</td></tr><tr><td>Company Name</td><td>${escapeHtml(quotation.companyName)}</td></tr><tr><td>Store Name</td><td>${escapeHtml(quotation.store || "")}</td></tr></tbody></table><div class="qrbox"><div class="qr-crop"><img src="${quotationStaticQr.src}" alt="Quotation QR"></div></div></div>
+      <div class="details"><table class="detail-table"><tbody><tr><td>Date</td><td>${escapeHtml(quoteDate)}</td></tr><tr><td>Quotation No.</td><td>${escapeHtml(quotation.id)}</td></tr><tr><td>Company Name</td><td>${escapeHtml(quotation.companyName)}</td></tr><tr><td>Store Name</td><td>${escapeHtml(quotation.store || "")}</td></tr>${customRows}</tbody></table><div class="qrbox"><div class="qr-crop"><img src="${quotationStaticQr.src}" alt="Quotation QR"></div></div></div>
       <table class="items${sqmTableClass}"><thead><tr><th class="c-serial">Sr. No.</th><th class="c-desc">Description of Work / Item</th><th class="c-qty">QTY</th>${sqmHeader}<th class="c-price">Unit Price (${escapeHtml(currency)})</th><th class="c-amount">Amount (${escapeHtml(currency)})</th></tr></thead><tbody>${rows}</tbody></table>
       <div class="totals"><div class="total-row"><div class="total-label">Sub-Total :</div><div class="total-value">${amount(subtotal)} ${escapeHtml(currency)}</div></div><div class="total-row"><div class="total-label">VAT (${amount(baseRate).replace(/\.00$/, "")}%) :</div><div class="total-value">${amount(vat)} ${escapeHtml(currency)}</div></div><div class="total-row"><div class="total-label grand-label">★TOTAL AMOUNT (Including VAT ${amount(baseRate).replace(/\.00$/, "")}%) :</div><div class="total-value grand-value">${amount(totalAmount)} ${escapeHtml(currency)}</div></div></div>
       <div class="footer-main">${escapeHtml(company.businessName || "3 Star Automatic Door & Maintenance Works")} — ${escapeHtml(company.city)}, ${escapeHtml(company.country)}</div>
